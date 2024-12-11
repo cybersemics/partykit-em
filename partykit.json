@@ -1,10 +1,9 @@
 {
   "$schema": "https://www.partykit.io/schema.json",
   "name": "partykit-em",
-  "main": "party/server.ts",
+  "main": "src/party/server.ts",
   "compatibilityDate": "2024-12-04",
   "serve": {
-    "path": "public",
-    "build": "app/client.tsx"
+    "path": "dist"
   }
 }
