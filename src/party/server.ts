@@ -23,8 +23,11 @@ export default class Server implements Party.Server {
    * This is called when the server starts, before `onConnect` or `onRequest`.
    */
   async onStart() {
-    // Check if the database exists
-    const db = await this.room.storage.get<string>("db")
+    // Check if the database exists; handle 1m room separately.
+    const db =
+      this.room.id === "1m"
+        ? "em-db-1m-finkef.turso.io"
+        : await this.room.storage.get<string>("db")
 
     try {
       if (!db) {
@@ -42,18 +45,29 @@ export default class Server implements Party.Server {
       this.updateStatus(RoomStatus.READY)
     } catch (error) {
       console.error("Failed to start server.", error)
+      this.updateStatus(RoomStatus.ERROR)
       throw error
     }
   }
 
+  /**
+   * Validate connections before accepting them.
+   *
+   * NOTE: This is where we would do authorization.
+   */
   static async onBeforeConnect(request: Party.Request, lobby: Party.Lobby) {
     // Only allow alphanumeric characters and dashes for rooms
-    if (!/^[a-zA-Z0-9-]{2,}$/.test(lobby.id))
+    if (!/^[a-z0-9-]{2,}$/.test(lobby.id))
       return new Response("Unauthorized", { status: 401 })
 
     return request
   }
 
+  /**
+   * Handles connection open events.
+   *
+   * Sends the current status to the new client and broadcasts the current list of clients to the room.
+   */
   async onConnect(conn: Party.Connection, ctx: Party.ConnectionContext) {
     // send the current status to the new client
     conn.send(JSON.stringify(Messages.status(this.status)))
@@ -68,6 +82,9 @@ export default class Server implements Party.Server {
     )
   }
 
+  /**
+   * Handles connection close events.
+   */
   async onClose(_connection: Party.Connection) {
     this.room.broadcast(
       JSON.stringify(
@@ -79,9 +96,10 @@ export default class Server implements Party.Server {
     )
   }
 
+  /**
+   * Handles incoming messages.
+   */
   onMessage(message: string, sender: Party.Connection) {
-    console.log("onMessage", message, sender)
-
     try {
       const data = JSON.parse(message) as Message
 
@@ -109,6 +127,9 @@ export default class Server implements Party.Server {
     }
   }
 
+  /**
+   * Handles incoming requests.
+   */
   async onRequest(req: Party.Request) {
     console.log("onRequest", req.method, req.url)
 
@@ -141,7 +162,12 @@ export default class Server implements Party.Server {
 
           await CRDT.insertMoveOperations(
             this.driver,
-            message.operations.filter((op) => op.type === "MOVE"),
+            message.operations
+              .filter((op) => op.type === "MOVE")
+              .map((op) => ({
+                ...op,
+                sync_timestamp: now.toISOString(),
+              })),
           )
 
           this.room.broadcast(
@@ -150,6 +176,59 @@ export default class Server implements Party.Server {
           )
 
           return this.json({ sync_timestamp: now.toISOString() })
+        }
+
+        case "sync:stream": {
+          const { lastSyncTimestamp } = message
+
+          const upperLimit = new Date().toISOString()
+
+          const total = await this.driver.total({
+            from: lastSyncTimestamp,
+            until: upperLimit,
+          })
+
+          const header = {
+            lowerLimit: lastSyncTimestamp,
+            upperLimit: upperLimit,
+            nodes: total.nodes,
+            operations: total.operations,
+          }
+
+          console.log(`Sending ${header.operations} operations.`)
+
+          const stream = new ReadableStream({
+            start: async (controller) => {
+              const encoder = new TextEncoder()
+
+              controller.enqueue(encoder.encode(`${JSON.stringify(header)}\n`))
+
+              try {
+                for await (const operations of this.driver.streamOperations({
+                  from: lastSyncTimestamp,
+                  until: upperLimit,
+                  abort: req.signal,
+                })) {
+                  controller.enqueue(
+                    encoder.encode(
+                      `${operations.map((op) => JSON.stringify(op)).join("\n")}\n`,
+                    ),
+                  )
+                }
+
+                controller.close()
+              } catch (err) {
+                controller.error(err)
+              }
+            },
+          })
+
+          return new Response(stream, {
+            headers: {
+              "Content-Type": "application/x-ndjson",
+              "Access-Control-Allow-Origin": "*",
+            },
+          })
         }
 
         default:
@@ -189,7 +268,23 @@ export default class Server implements Party.Server {
         }),
       },
     ).then(async (res) => {
-      if (!res.ok) throw new Error(await res.text())
+      if (!res.ok) {
+        const error = await res.json()
+
+        if (
+          "error" in error &&
+          typeof error.error === "string" &&
+          error.error.includes("already exists")
+        ) {
+          return {
+            database: {
+              Hostname: `${this.room.env.TURSO_DB_PREFIX}${this.room.id}-${this.room.env.TURSO_ORG_ID}.turso.io`,
+            },
+          }
+        }
+
+        throw new Error(await res.text())
+      }
 
       return res.json() as Promise<{ database: { Hostname: string } }>
     })
@@ -210,13 +305,14 @@ export default class Server implements Party.Server {
     this.driver = new TursoDriver(this.client)
   }
 
+  /**
+   * Helper function to create a JSON response with the correct headers.
+   */
   json(data: any) {
     return Response.json(data, {
       status: 200,
       headers: {
         "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "*",
-        "Access-Control-Allow-Headers": "*",
       },
     })
   }

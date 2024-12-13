@@ -174,3 +174,5 @@ dist
 .postcss-cache
 
 public/dist
+
+.dump

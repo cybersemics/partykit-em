@@ -135,7 +135,7 @@ export const Tree = ({ className }: TreeProps) => {
         onRename={onRename}
         onMove={onMove}
         onDelete={onDelete}
-        openByDefault={false}
+        openByDefault={true}
         initialOpenState={{ ROOT: true }}
       >
         {TreeNode}

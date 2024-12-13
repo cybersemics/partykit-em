@@ -4,17 +4,21 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { Notifier } from "@/lib/notifier"
 import { cn } from "@/lib/utils"
-import { Users } from "lucide-react"
+import { clear } from "@/worker/actions"
+import { Trash2, Users } from "lucide-react"
+import { toast } from "sonner"
 import { useConnection } from "./connection"
+import { Button } from "./ui/button"
 
 export const StatusBar = () => {
-  const { connected, status, clients, clientId } = useConnection()
+  const { connected, status, clients, clientId, worker } = useConnection()
 
   return (
     <div
       className={cn(
-        "p-2 border-b border-border shadow-sm font-mono",
+        "p-1 border-b border-border shadow-sm font-mono",
         "bg-gray-50/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_8px,rgba(148,163,184,0.05)_4px,rgba(148,163,184,0.05)_16px)]"
       )}
     >
@@ -34,7 +38,7 @@ export const StatusBar = () => {
 
         <div className="text-sm font-semibold">Status: {status}</div>
 
-        <div className="text-sm font-semibold flex items-center gap-1">
+        <div className="text-sm font-semibold flex items-center gap-4">
           <TooltipProvider>
             <Tooltip delayDuration={0}>
               <TooltipTrigger>
@@ -53,6 +57,36 @@ export const StatusBar = () => {
                     </span>
                   ))}
                 </p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider>
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <Button
+                  className="py-0"
+                  variant="ghost"
+                  size="icon"
+                  onClick={async () => {
+                    await worker.waitForResult(clear())
+                    Notifier.notify()
+                    toast.success("Local database cleared.", {
+                      description: "Refresh the page to trigger fresh sync.",
+                      action: {
+                        label: "Refresh",
+                        onClick: () => {
+                          window.location.reload()
+                        },
+                      },
+                    })
+                  }}
+                >
+                  <Trash2 className="size-4 text-red-500" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Clear local database</p>
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

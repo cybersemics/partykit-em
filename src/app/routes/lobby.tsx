@@ -28,7 +28,7 @@ export const Lobby = () => {
             type="text"
             placeholder="Enter room ID"
             required
-            pattern="[a-zA-Z0-9-]{2,}"
+            pattern="[a-z0-9-]{2,}"
           />
           <Button type="submit">Join</Button>
         </div>

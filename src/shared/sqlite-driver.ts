@@ -32,8 +32,6 @@ export class SqliteDriver extends Driver {
   }
 
   private async exec({ sql /* bindings */ }: Statement) {
-    console.log("exec", sql)
-
     const bindings = undefined
 
     const results = []
@@ -74,7 +72,7 @@ export class SqliteDriver extends Driver {
       -- Create tables
       CREATE TABLE IF NOT EXISTS nodes (
         id TEXT PRIMARY KEY,
-        parent_id TEXT,
+        parent_id TEXT NULL,
         FOREIGN KEY (parent_id) REFERENCES nodes(id)
       );
       CREATE TABLE IF NOT EXISTS payloads (

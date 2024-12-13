@@ -31,11 +31,7 @@ export const useTree = () => {
   )
 
   useLayoutEffect(() => {
-    console.log("useLayoutEffect", typeof treeCache.current, worker.initialized)
-
     if (treeCache.current || !worker.initialized) return
-
-    console.log("fetching tree")
 
     worker.waitForResult(tree()).then((tree) => {
       treeCache.current = buildTree(tree)

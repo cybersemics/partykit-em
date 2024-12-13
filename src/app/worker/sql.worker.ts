@@ -70,6 +70,16 @@ async function setup() {
         break
       }
 
+      case "clear": {
+        invariant(driver)
+
+        await driver.execute(sql`DELETE FROM op_log`)
+        await driver.execute(sql`DELETE FROM nodes`)
+        await driver.execute(sql`DELETE FROM payloads`)
+
+        return respond(action)
+      }
+
       case "tree": {
         invariant(driver)
 
@@ -125,6 +135,15 @@ async function setup() {
           UPDATE op_log SET sync_timestamp = '${syncTimestamp}' WHERE timestamp IN (${moves.map((move) => `'${move.timestamp}'`).join(",")})
         `)
         return respond(action)
+      }
+
+      case "lastSyncTimestamp": {
+        invariant(driver)
+
+        const result = await driver.execute(sql`
+          SELECT sync_timestamp FROM op_log ORDER BY sync_timestamp DESC LIMIT 1
+        `)
+        return respond(action, result[0]?.sync_timestamp ?? "1970-01-01")
       }
 
       default: {

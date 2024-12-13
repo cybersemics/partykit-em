@@ -39,7 +39,7 @@ export const insertMoveOperations = async (
 
   const minTimestamp = operations.reduce((min, op) => {
     return min < op.timestamp ? min : op.timestamp
-  }, new Date("2999-01-01T00:00:00Z").toISOString())
+  }, "2999-01-01T00:00:00Z")
 
   await driver.transaction(async (tx) => {
     const nodes = new Set(
@@ -65,34 +65,22 @@ export const insertMoveOperations = async (
       .join(",\n")
 
     await tx.executeScript(sql`
-      -- Create indexed temp table
-      DROP TABLE IF EXISTS temp_nodes;
-      CREATE TABLE temp_nodes (
-        id TEXT PRIMARY KEY,
-        parent_id TEXT
-      ) WITHOUT ROWID;
-      CREATE INDEX temp_nodes_parent_idx ON temp_nodes(parent_id);
-
       -- Ensure all nodes exist
       INSERT OR IGNORE INTO nodes (id) VALUES ${Array.from(nodes)
         .map((id) => `('${id}')`)
         .join(",")};
 
       -- First insert moves
-      INSERT INTO op_log
+      INSERT OR IGNORE INTO op_log
         (timestamp, node_id, old_parent_id, new_parent_id, client_id, sync_timestamp)
       VALUES ${values};
 
-      -- Populate temp table with current node state
-      INSERT INTO temp_nodes 
-      SELECT id, parent_id FROM nodes;
-
       -- Reset moved nodes to their state before minTimestamp
-      UPDATE temp_nodes
+      UPDATE nodes
       SET parent_id = (
         SELECT old_parent_id
         FROM op_log
-        WHERE node_id = temp_nodes.id
+        WHERE node_id = nodes.id
           AND timestamp >= '${minTimestamp}'
         ORDER BY timestamp ASC
         LIMIT 1
@@ -117,25 +105,25 @@ export const insertMoveOperations = async (
     `)
 
     // Apply valid moves in timestamp order
-    for (const { node_id, new_parent_id, timestamp } of moves) {
-      if (!node_id || !new_parent_id) continue
-
-      await tx.executeScript(sql`
-        WITH RECURSIVE ancestors(id) AS (
+    const moveStatements = moves
+      .filter(({ node_id, new_parent_id }) => node_id && new_parent_id)
+      .map(
+        ({ node_id, new_parent_id }) => `
+        WITH RECURSIVE ancestors(id, depth) AS (
           -- Start from the new parent
-          SELECT parent_id 
-          FROM temp_nodes
+          SELECT parent_id, 1 
+          FROM nodes
           WHERE id = '${new_parent_id}'
           
           UNION ALL
           
-          -- Follow parent links up using indexed temp table
-          SELECT n.parent_id 
-          FROM temp_nodes n
+          -- Follow parent links up, with depth limit
+          SELECT n.parent_id, a.depth + 1
+          FROM nodes n
           JOIN ancestors a ON n.id = a.id
-          WHERE n.parent_id IS NOT NULL
+          WHERE n.parent_id IS NOT NULL AND n.parent_id != '${new_parent_id}'
         )
-        UPDATE temp_nodes
+        UPDATE nodes
         SET parent_id = CASE
           -- Only update if the node isn't an ancestor (wouldn't create cycle)
           WHEN NOT EXISTS (SELECT 1 FROM ancestors WHERE id = '${node_id}')
@@ -144,20 +132,11 @@ export const insertMoveOperations = async (
           ELSE parent_id
         END
         WHERE id = '${node_id}';
-      `)
-    }
+      `,
+      )
+      .join("\n")
 
-    // Copy final state back to nodes table
-    await tx.executeScript(sql`
-      UPDATE nodes
-      SET parent_id = (
-        SELECT parent_id
-        FROM temp_nodes
-        WHERE temp_nodes.id = nodes.id
-      );
-
-      DROP TABLE IF EXISTS temp_nodes;
-    `)
+    await tx.executeScript(sql`${moveStatements}`)
 
     await tx.commit()
   })
