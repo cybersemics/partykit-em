@@ -4,6 +4,7 @@
   "main": "src/party/server.ts",
   "compatibilityDate": "2024-12-04",
   "serve": {
-    "path": "dist"
+    "path": "dist",
+    "singlePageApp": true
   }
 }
