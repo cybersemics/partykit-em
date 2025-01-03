@@ -141,3 +141,28 @@ export const insertMoveOperations = async (
     await tx.commit()
   })
 }
+
+export const subtree = async (driver: Driver, id: string, depth = 1) => {
+  const nodes = await driver.execute<{ id: string; parent_id: string }>(sql`
+    WITH RECURSIVE descendants(id, parent_id, depth) AS (
+      -- Start with the root node
+      SELECT id, parent_id, 0 as depth
+      FROM nodes
+      WHERE id = '${id}'
+      
+      UNION ALL
+      
+      -- Recursively get children, limiting depth
+      SELECT n.id, n.parent_id, d.depth + 1
+      FROM nodes n
+      JOIN descendants d ON n.parent_id = d.id
+      WHERE d.depth < ${depth}
+    )
+    SELECT id, parent_id
+    FROM descendants
+    WHERE depth > 0
+    ORDER BY depth ASC, id ASC;
+  `)
+
+  return nodes
+}

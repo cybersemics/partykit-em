@@ -3,3 +3,7 @@ export type Node = {
   content?: string | null
   children?: Node[]
 }
+
+export type VirtualNode = Node & {
+  loading?: boolean
+}

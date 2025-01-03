@@ -5,6 +5,9 @@ type ActionResults = {
   tree: Array<{ id: string; parent_id: string; content?: string | null }>
   opLog: Array<MoveOperation>
   lastSyncTimestamp: string
+  init: {
+    lastSyncTimestamp: string | null
+  }
 }
 
 export const clear = () => ({
@@ -35,8 +38,9 @@ export const insertMoves = (moves: Array<MoveOperation>) => ({
   moves,
 })
 
-export const lastSyncTimestamp = () => ({
+export const lastSyncTimestamp = (clientId: string) => ({
   type: "lastSyncTimestamp" as const,
+  clientId,
   id: nanoid(),
 })
 

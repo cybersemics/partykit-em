@@ -207,6 +207,7 @@ export default class Server implements Party.Server {
                 for await (const operations of this.driver.streamOperations({
                   from: lastSyncTimestamp,
                   until: upperLimit,
+                  chunkSize: 600,
                   abort: req.signal,
                 })) {
                   controller.enqueue(
@@ -229,6 +230,12 @@ export default class Server implements Party.Server {
               "Access-Control-Allow-Origin": "*",
             },
           })
+        }
+
+        case "subtree": {
+          const { id, depth } = message
+          const nodes = await CRDT.subtree(this.driver, id, depth)
+          return this.json(nodes)
         }
 
         default:

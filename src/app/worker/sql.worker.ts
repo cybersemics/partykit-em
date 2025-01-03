@@ -65,7 +65,13 @@ async function setup() {
 
         await driver.createTables()
 
-        respond(action)
+        const result = await driver.execute(sql`
+          SELECT sync_timestamp FROM op_log ORDER BY sync_timestamp DESC LIMIT 1
+        `)
+
+        respond(action, {
+          lastSyncTimestamp: result[0]?.sync_timestamp ?? null,
+        })
 
         break
       }
@@ -98,6 +104,7 @@ async function setup() {
             FROM nodes
             LEFT JOIN payloads ON nodes.id = payloads.node_id
             JOIN tree ON nodes.parent_id = tree.id
+            ORDER BY nodes.id
           )
           SELECT * FROM tree
         `)
@@ -140,8 +147,10 @@ async function setup() {
       case "lastSyncTimestamp": {
         invariant(driver)
 
+        const { clientId } = action
+
         const result = await driver.execute(sql`
-          SELECT sync_timestamp FROM op_log ORDER BY sync_timestamp DESC LIMIT 1
+          SELECT sync_timestamp FROM op_log WHERE client_id != '${clientId}' ORDER BY sync_timestamp DESC LIMIT 1
         `)
         return respond(action, result[0]?.sync_timestamp ?? "1970-01-01")
       }

@@ -1,12 +1,18 @@
-import type { Node } from "@/lib/types"
+import type { VirtualNode } from "@/lib/types"
 import { cn } from "@/lib/utils"
-import { ChevronRightIcon, DotIcon, PlusIcon, TrashIcon } from "lucide-react"
+import {
+  ChevronRightIcon,
+  DotIcon,
+  Loader,
+  PlusIcon,
+  TrashIcon,
+} from "lucide-react"
 import { ChevronDownIcon } from "lucide-react"
 import { useRef } from "react"
 import { useEffect } from "react"
 import type { NodeRendererProps } from "react-arborist"
 
-const Edit = ({ node }: NodeRendererProps<Node>) => {
+const Edit = ({ node }: NodeRendererProps<VirtualNode>) => {
   const input = useRef<any>()
 
   useEffect(() => {
@@ -28,7 +34,7 @@ const Edit = ({ node }: NodeRendererProps<Node>) => {
   )
 }
 
-const Show = ({ node }: NodeRendererProps<Node>) => {
+const Show = ({ node }: NodeRendererProps<VirtualNode>) => {
   return (
     <span
       className={cn("cursor-text", node.id === "ROOT" && "opacity-50")}
@@ -39,7 +45,7 @@ const Show = ({ node }: NodeRendererProps<Node>) => {
   )
 }
 
-export const TreeNode = (props: NodeRendererProps<Node>) => {
+export const TreeNode = (props: NodeRendererProps<VirtualNode>) => {
   const { node, style, tree, dragHandle } = props
 
   return (
@@ -55,7 +61,9 @@ export const TreeNode = (props: NodeRendererProps<Node>) => {
           node.toggle()
         }}
       >
-        {node.isLeaf || (node.children && !node.children.length) ? (
+        {node.data.loading ? (
+          <Loader className="w-5 h-5 animate-spin duration-1000" />
+        ) : node.children && !node.children.length ? (
           <DotIcon width={20} height={20} />
         ) : node.isOpen ? (
           <ChevronDownIcon width={20} height={20} />
@@ -79,12 +87,14 @@ export const TreeNode = (props: NodeRendererProps<Node>) => {
           <PlusIcon width={16} height={16} className="text-gray-400" />
         </div>
 
-        <div
-          className="opacity-0 group-hover:opacity-100 transition-opacity p-1 cursor-pointer"
-          onClick={() => tree.delete(node.id)}
-        >
-          <TrashIcon width={16} height={16} className="text-red-400" />
-        </div>
+        {node.id !== "ROOT" && (
+          <div
+            className="opacity-0 group-hover:opacity-100 transition-opacity p-1 cursor-pointer"
+            onClick={() => tree.delete(node.id)}
+          >
+            <TrashIcon width={16} height={16} className="text-red-400" />
+          </div>
+        )}
       </div>
     </div>
   )

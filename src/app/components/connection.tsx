@@ -1,5 +1,6 @@
 import { Notifier } from "@/lib/notifier"
 import { useClientId } from "@/lib/use-client-id"
+import { insertIntoVirtualTree } from "@/lib/use-virtual-tree"
 import {
   type Action,
   type ActionResult,
@@ -22,12 +23,13 @@ import {
 } from "react"
 import { useParams } from "react-router-dom"
 import { toast } from "sonner"
-import { type Message, push, syncStream } from "../../shared/messages"
+import { type Message, push, subtree, syncStream } from "../../shared/messages"
 import type { MoveOperation } from "../../shared/operation"
 import SQLWorker from "../worker/sql.worker?worker"
 
 export interface ConnectionContext {
   connected: boolean
+  hydrated: boolean
   status: string | null
   clients: string[]
   clientId: string
@@ -40,6 +42,10 @@ export interface ConnectionContext {
   }
   timestamp: () => string
   pushMoves: (moves: MoveOperation[]) => Promise<void>
+  fetchSubtree: (
+    id: string,
+    depth?: number
+  ) => Promise<{ id: string; parent_id: string }[]>
 }
 
 const ConnectionContext = createContext<ConnectionContext>({} as any)
@@ -59,6 +65,7 @@ export const Connection = ({ children }: ConnectionProps) => {
 
   const didConnectInitially = useRef(false)
   const [connected, setConnected] = useState(false)
+  const [hydrated, setHydrated] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
   const [workerInitialized, setWorkerInitialized] = useState<boolean>(false)
   const [clients, setClients] = useState<string[]>([])
@@ -94,8 +101,12 @@ export const Connection = ({ children }: ConnectionProps) => {
         pendingCallbacks.set(action.id, resolve)
       })
 
-    waitForResult(init(room)).then(() => {
+    waitForResult(init(room)).then(({ lastSyncTimestamp }) => {
       setWorkerInitialized(true)
+
+      if (lastSyncTimestamp) {
+        setHydrated(true)
+      }
     })
 
     return { instance: worker, waitForResult }
@@ -105,7 +116,9 @@ export const Connection = ({ children }: ConnectionProps) => {
    * Pull moves from the server.
    */
   const pullMoves = useCallback(async () => {
-    const syncTimestamp = await worker.waitForResult(lastSyncTimestamp())
+    const syncTimestamp = await worker.waitForResult(
+      lastSyncTimestamp(clientId)
+    )
 
     console.log("syncTimestamp", syncTimestamp)
 
@@ -189,6 +202,8 @@ export const Connection = ({ children }: ConnectionProps) => {
         await worker.waitForResult(insertMoves(operations))
       }
 
+      setHydrated(true)
+
       toast.success(`Synced ${processed} operations.`, {
         id: syncToast,
         duration: 1000,
@@ -207,7 +222,27 @@ export const Connection = ({ children }: ConnectionProps) => {
       reader.releaseLock()
       Notifier.notify()
     }
-  }, [room, worker])
+  }, [room, worker, clientId])
+
+  /**
+   * Fetch a subtree from the server.
+   */
+  const fetchSubtree = useCallback(
+    async (id: string, depth = 1) => {
+      const nodes = await fetch(
+        `${import.meta.env.VITE_PARTYKIT_HOST}/parties/main/${room}`,
+        {
+          method: "POST",
+          body: JSON.stringify(subtree(id, depth)),
+        }
+      ).then(
+        (res) => res.json() as Promise<{ id: string; parent_id: string }[]>
+      )
+
+      return nodes
+    },
+    [room]
+  )
 
   const socket = usePartySocket({
     room: room,
@@ -247,6 +282,9 @@ export const Connection = ({ children }: ConnectionProps) => {
             const moveOps = data.operations.filter(
               (op): op is MoveOperation => op.type === "MOVE"
             )
+            for (const move of moveOps) {
+              insertIntoVirtualTree(move)
+            }
             await worker.waitForResult(insertMoves(moveOps))
             Notifier.notify()
             break
@@ -315,15 +353,18 @@ export const Connection = ({ children }: ConnectionProps) => {
   const value = useMemo(
     () => ({
       connected,
+      hydrated,
       status,
       clients,
       clientId,
       worker: { ...worker, initialized: workerInitialized },
       timestamp,
       pushMoves,
+      fetchSubtree,
     }),
     [
       connected,
+      hydrated,
       status,
       clients,
       worker,
@@ -331,6 +372,7 @@ export const Connection = ({ children }: ConnectionProps) => {
       clientId,
       timestamp,
       pushMoves,
+      fetchSubtree,
     ]
   )
 

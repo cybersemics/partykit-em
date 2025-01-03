@@ -1,6 +1,6 @@
 import { Notifier } from "@/lib/notifier"
 import type { Node } from "@/lib/types"
-import { useTree } from "@/lib/use-tree"
+import { insertIntoVirtualTree } from "@/lib/use-virtual-tree"
 import { cn } from "@/lib/utils"
 import { insertMoves } from "@/worker/actions"
 import { nanoid } from "nanoid/non-secure"
@@ -19,13 +19,14 @@ import { TreeNode } from "./tree-node"
 
 export interface TreeProps {
   className?: string
+  virtual?: boolean
+  tree?: Node[] | null
+  onToggle?: (node: string) => void
 }
 
-export const Tree = ({ className }: TreeProps) => {
+export const Tree = ({ className, virtual, tree, onToggle }: TreeProps) => {
   const { worker, clientId, timestamp, pushMoves } = useConnection()
   const { ref, width, height } = useResizeObserver()
-
-  const tree = useTree()
 
   const onCreate = useCallback<CreateHandler<Node>>(
     async ({ parentId }) => {
@@ -42,6 +43,9 @@ export const Tree = ({ className }: TreeProps) => {
         client_id: clientId,
         timestamp: timestamp(),
       }
+
+      // Insert into virtual tree
+      insertIntoVirtualTree(move)
 
       await worker.waitForResult(insertMoves([move]))
       Notifier.notify()
@@ -77,6 +81,11 @@ export const Tree = ({ className }: TreeProps) => {
         })
       )
 
+      // Insert into virtual tree
+      for (const move of moves) {
+        insertIntoVirtualTree(move)
+      }
+
       await worker.waitForResult(insertMoves(moves))
       Notifier.notify()
 
@@ -87,6 +96,11 @@ export const Tree = ({ className }: TreeProps) => {
 
   const onDelete = useCallback<DeleteHandler<Node>>(
     async ({ nodes }) => {
+      if (nodes.some((node) => node.id === "ROOT")) {
+        console.log("Attempted to delete the root node.")
+        return
+      }
+
       const moves = nodes.map(
         (node): MoveOperation => ({
           type: "MOVE",
@@ -97,6 +111,11 @@ export const Tree = ({ className }: TreeProps) => {
           timestamp: timestamp(),
         })
       )
+
+      // Insert into virtual tree
+      for (const move of moves) {
+        insertIntoVirtualTree(move)
+      }
 
       await worker.waitForResult(insertMoves(moves))
       Notifier.notify()
@@ -123,11 +142,14 @@ export const Tree = ({ className }: TreeProps) => {
     <div
       ref={ref}
       className={cn(
-        "bg-card border border-border rounded-lg p-2 shadow-sm",
+        "relative bg-card border border-border rounded-lg p-2 shadow-sm",
+        virtual &&
+          "bg-blue-50/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_8px,rgba(96,165,250,0.05)_4px,rgba(96,165,250,0.05)_16px)]",
         className
       )}
     >
       <Arborist<Node>
+        key={virtual ? "virtual" : "local"}
         data={tree}
         width={width}
         height={height}
@@ -135,11 +157,18 @@ export const Tree = ({ className }: TreeProps) => {
         onRename={onRename}
         onMove={onMove}
         onDelete={onDelete}
-        openByDefault={true}
+        onToggle={onToggle}
+        openByDefault={false}
         initialOpenState={{ ROOT: true }}
       >
         {TreeNode}
       </Arborist>
+
+      {virtual && (
+        <div className="absolute top-3 right-6 font-mono font-semibold uppercase text-blue-400">
+          Virtual
+        </div>
+      )}
     </div>
   )
 }
