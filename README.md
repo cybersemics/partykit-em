@@ -1,40 +1,57 @@
-# 🎈 partykit-em
+# 🎈 partykit-em (TreeCRDT 🌳)
 
-Welcome to the party, pal!
+A proof-of-concept implementation of a tree-based CRDT algorithm with local SQLite database and PartyKit-based backend. Each thoughtspace gets its own room and Turso SQLite database. Real-time collaboration is powered by WebSocket connections through PartyKit, with full history synchronization via HTTP streaming.
 
-This is a [Partykit](https://partykit.io) project, which lets you create real-time collaborative applications with minimal coding effort.
+## Features
 
-This is the **React starter** which pairs a PartyKit server with a React client.
+- Tree-based CRDT algorithm for conflict-free collaborative editing
+- Local SQLite database for offline-first capabilities
+- Real-time collaboration via PartyKit WebSocket connections
+- Full history synchronization through HTTP streaming
+- Separate room and Turso SQLite DB for each thoughtspace
+- Foreground sync with all capabilities until local client is fully hydrated
 
-Refer to our docs for more information: https://github.com/partykit/partykit/blob/main/README.md. For more help, reach out to us on [Discord](https://discord.gg/g5uqHQJc3z), [GitHub](https://github.com/partykit/partykit), or [Twitter](https://twitter.com/partykit_io).
+## Getting Started
 
-## Usage
+### Development
 
-You can start developing by running `npm run dev` and opening [http://localhost:1999](http://localhost:1999) in your browser. When you're ready, you can deploy your application on to the PartyKit cloud with `npm run deploy`.
+To start the development environment:
 
-## Finding your way around
+```bash
+yarn dev
+```
 
-[`party/server.ts`](./party/server.ts) is the server-side code, which is responsible for handling WebSocket events and HTTP requests.
+This will open two terminal tabs:
+- Client development server
+- PartyKit development server
 
-It implements a simple counter that can be incremented by any connected client. The latest state is broadcast to all connected clients.
+You can also run them separately:
+```bash
+# Run the client development server
+yarn client:dev
 
-> [!NOTE]
-> The full Server API is available at [Party.Server in the PartyKit docs](https://docs.partykit.io/reference/partyserver-api/)
+# Run the PartyKit server
+yarn server:dev
+```
 
-[`app/client.tsx`](./src/client.ts) is the entrypoint to client-side code.
+### Other Commands
 
-[`app/components/Counter.tsx`](./src/components/Counter.tsx) connects to the server, sends `increment` events on the WebSocket, and listens for updates.
+```bash
+# Build the client
+yarn client:build
 
-> [!NOTE]
-> The client-side reference can be found at [PartySocket in the PartyKit docs](https://docs.partykit.io/reference/partysocket-api/)
+# Deploy to PartyKit
+yarn deploy
 
-As a client-side React app, the app could be hosted every. During development, for convenience, the server serves the client-side code as well.
+# Seed the database
+yarn seed
+```
 
-This is achieved with the optional `serve` property in the [`partykit.json`](./partykit.json) config file.
+## Project Structure
 
-> [!NOTE]
-> Learn about PartyKit config under [Configuration in the PartyKit docs](https://docs.partykit.io/reference/partykit-configuration/)
+- `src/shared` - Shared code between client and server
+- `src/party/server.ts` - PartyKit server implementation
+- `src/app` - Client-side React application
+- `src/app/worker` - Web Workers for database operations
 
-## Next Steps
-
-Learn about deploying PartyKit applications in the [Deployment guide of the PartyKit docs](https://docs.partykit.io/guides/deploying-your-partykit-server/).
+For more information about PartyKit, visit the [PartyKit documentation](https://docs.partykit.io/).
