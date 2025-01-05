@@ -1,20 +1,15 @@
-import { type Client, createClient } from "@libsql/client/web"
-import fetch from "node-fetch"
 import type * as Party from "partykit/server"
 import * as CRDT from "../shared/crdt"
 import * as Messages from "../shared/messages"
 import type { Message } from "../shared/messages"
 import type { MoveOperation } from "../shared/operation"
+import { PostgresDriver } from "../shared/pg-driver"
 import { RoomStatus } from "../shared/room-status"
-import { TursoDriver } from "../shared/turso-driver"
 
 export default class Server implements Party.Server {
   // biome-ignore lint/style/noNonNullAssertion: <explanation>
-  client: Client = null!
-  // biome-ignore lint/style/noNonNullAssertion: <explanation>
-  driver: TursoDriver = null!
+  driver: PostgresDriver = null!
 
-  db = "<pending>"
   status: RoomStatus = RoomStatus.BOOTING
 
   constructor(readonly room: Party.Room) {}
@@ -23,21 +18,13 @@ export default class Server implements Party.Server {
    * This is called when the server starts, before `onConnect` or `onRequest`.
    */
   async onStart() {
-    // Check if the database exists; handle 1m room separately.
-    const db =
-      this.room.id === "1m"
-        ? "em-db-1m-finkef.turso.io"
-        : await this.room.storage.get<string>("db")
-
     try {
-      if (!db) {
-        await this.updateStatus(RoomStatus.CREATING_DB)
-        await this.createDatabase()
-      } else {
-        this.db = db
-      }
-
-      this.setupClient()
+      this.driver = new PostgresDriver(this.room.id, {
+        host: this.room.env.PG_HOST as string,
+        user: this.room.env.PG_USER as string,
+        password: this.room.env.PG_PASSWORD as string,
+        db: this.room.env.PG_DB as string,
+      })
 
       // Create tables if they don't exist yet.
       await this.driver.createTables()
@@ -56,8 +43,8 @@ export default class Server implements Party.Server {
    * NOTE: This is where we would do authorization.
    */
   static async onBeforeConnect(request: Party.Request, lobby: Party.Lobby) {
-    // Only allow alphanumeric characters and dashes for rooms
-    if (!/^[a-z0-9-]{2,}$/.test(lobby.id))
+    // Only allow alphanumeric characters and underscores for rooms
+    if (!/^[a-z0-9_]{2,}$/.test(lobby.id))
       return new Response("Unauthorized", { status: 401 })
 
     return request
@@ -160,19 +147,19 @@ export default class Server implements Party.Server {
 
           const clientId = moveOps[0].client_id
 
-          await CRDT.insertMoveOperations(
-            this.driver,
+          this.room.broadcast(
+            JSON.stringify(Messages.push(message.operations)),
+            [clientId],
+          )
+
+          // PostgreSQL-optimized CRDT implementation
+          await this.driver.insertMoveOperations(
             message.operations
               .filter((op) => op.type === "MOVE")
               .map((op) => ({
                 ...op,
                 sync_timestamp: now.toISOString(),
               })),
-          )
-
-          this.room.broadcast(
-            JSON.stringify(Messages.push(message.operations)),
-            [clientId],
           )
 
           return this.json({ sync_timestamp: now.toISOString() })
@@ -207,7 +194,7 @@ export default class Server implements Party.Server {
                 for await (const operations of this.driver.streamOperations({
                   from: lastSyncTimestamp,
                   until: upperLimit,
-                  chunkSize: 600,
+                  chunkSize: 1000,
                   abort: req.signal,
                 })) {
                   controller.enqueue(
@@ -254,62 +241,6 @@ export default class Server implements Party.Server {
 
     this.status = status
     this.room.broadcast(JSON.stringify(Messages.status(status)), [])
-  }
-
-  /**
-   * Creates a new database from the base branch.
-   */
-  async createDatabase() {
-    const {
-      database: { Hostname: hostname },
-    } = await fetch(
-      `https://api.turso.tech/v1/organizations/${this.room.env.TURSO_ORG_ID}/databases`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${this.room.env.TURSO_PLATFORM_TOKEN}`,
-        },
-        body: JSON.stringify({
-          group: this.room.env.TURSO_GROUP_ID,
-          name: `${this.room.env.TURSO_DB_PREFIX}${this.room.id}`,
-        }),
-      },
-    ).then(async (res) => {
-      if (!res.ok) {
-        const error = await res.json()
-
-        if (
-          "error" in error &&
-          typeof error.error === "string" &&
-          error.error.includes("already exists")
-        ) {
-          return {
-            database: {
-              Hostname: `${this.room.env.TURSO_DB_PREFIX}${this.room.id}-${this.room.env.TURSO_ORG_ID}.turso.io`,
-            },
-          }
-        }
-
-        throw new Error(await res.text())
-      }
-
-      return res.json() as Promise<{ database: { Hostname: string } }>
-    })
-
-    await this.room.storage.put("db", hostname)
-    this.db = hostname
-  }
-
-  /**
-   * Sets up the client and driver.
-   */
-  setupClient() {
-    this.client = createClient({
-      url: `libsql://${this.db}`,
-      authToken: this.room.env.TURSO_DB_TOKEN as string,
-    })
-
-    this.driver = new TursoDriver(this.client)
   }
 
   /**

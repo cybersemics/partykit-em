@@ -41,7 +41,12 @@ export const insertMoveOperations = async (
     return min < op.timestamp ? min : op.timestamp
   }, "2999-01-01T00:00:00Z")
 
+  // const checkpoint0 = performance.now()
+
   await driver.transaction(async (tx) => {
+    // const checkpoint1 = performance.now()
+    // console.log(`Transaction took ${checkpoint1 - checkpoint0}ms`)
+
     const nodes = new Set(
       operations.flatMap((op) => [
         op.node_id,
@@ -92,6 +97,9 @@ export const insertMoveOperations = async (
       );
     `)
 
+    // const checkpoint2 = performance.now()
+    // console.log(`Move insertions took ${checkpoint2 - checkpoint1}ms`)
+
     // Get and apply moves in timestamp order
     const moves = await tx.execute<{
       node_id: string
@@ -103,6 +111,9 @@ export const insertMoveOperations = async (
       WHERE timestamp >= '${minTimestamp}'
       ORDER BY timestamp ASC
     `)
+
+    // const checkpoint3 = performance.now()
+    // console.log(`Move selection took ${checkpoint3 - checkpoint2}ms`)
 
     // Apply valid moves in timestamp order
     const moveStatements = moves
@@ -122,6 +133,7 @@ export const insertMoveOperations = async (
           FROM nodes n
           JOIN ancestors a ON n.id = a.id
           WHERE n.parent_id IS NOT NULL AND n.parent_id != '${new_parent_id}'
+              AND a.depth < 100
         )
         UPDATE nodes
         SET parent_id = CASE
@@ -138,8 +150,16 @@ export const insertMoveOperations = async (
 
     await tx.executeScript(sql`${moveStatements}`)
 
+    // const checkpoint4 = performance.now()
+    // console.log(
+    //   `Move application took ${checkpoint4 - checkpoint3}ms. At: ${checkpoint4}`,
+    // )
+
     await tx.commit()
   })
+
+  // const checkpoint5 = performance.now()
+  // console.log(`Total took ${checkpoint5 - checkpoint0}ms`)
 }
 
 export const subtree = async (driver: Driver, id: string, depth = 1) => {

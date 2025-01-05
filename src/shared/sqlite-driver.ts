@@ -87,8 +87,8 @@ export class SqliteDriver extends Driver {
         old_parent_id TEXT,
         new_parent_id TEXT,
         client_id TEXT,
-        sync_timestamp TEXT, -- The time the operation was synced to the server.
-        local_synced BOOLEAN NOT NULL DEFAULT 0, -- Whether the operation was synced to the client.
+        sync_timestamp TEXT,
+        last_sync_timestamp TEXT,
         FOREIGN KEY (node_id) REFERENCES nodes(id),
         FOREIGN KEY (old_parent_id) REFERENCES nodes(id),
         FOREIGN KEY (new_parent_id) REFERENCES nodes(id)
@@ -108,5 +108,9 @@ export class SqliteDriver extends Driver {
       INSERT OR IGNORE INTO nodes (id, parent_id) VALUES ('ROOT', NULL);
       INSERT OR IGNORE INTO nodes (id, parent_id) VALUES ('TOMBSTONE', NULL); 
     `)
+
+    await this.executeScript(sql`
+      ALTER TABLE op_log ADD COLUMN last_sync_timestamp TEXT;
+    `).catch(() => {})
   }
 }
