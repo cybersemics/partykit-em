@@ -4,6 +4,7 @@ import type { MoveOperation } from "../../shared/operation"
 type ActionResults = {
   tree: Array<{ id: string; parent_id: string; content?: string | null }>
   opLog: Array<MoveOperation>
+  pendingMoves: Array<MoveOperation>
   lastSyncTimestamp: string
   init: {
     lastSyncTimestamp: string | null
@@ -30,6 +31,12 @@ export const opLog = (options?: { limit?: number }) => ({
   type: "opLog" as const,
   id: nanoid(),
   options,
+})
+
+export const pendingMoves = (clientId: string) => ({
+  type: "pendingMoves" as const,
+  clientId,
+  id: nanoid(),
 })
 
 export const insertMoves = (moves: Array<MoveOperation>) => ({
@@ -59,6 +66,7 @@ export type Action =
   | ReturnType<typeof clear>
   | ReturnType<typeof tree>
   | ReturnType<typeof opLog>
+  | ReturnType<typeof pendingMoves>
   | ReturnType<typeof insertMoves>
   | ReturnType<typeof lastSyncTimestamp>
   | ReturnType<typeof acknowledgeMoves>

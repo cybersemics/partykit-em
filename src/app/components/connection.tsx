@@ -8,6 +8,7 @@ import {
   init,
   insertMoves,
   lastSyncTimestamp,
+  pendingMoves,
 } from "@/worker/actions"
 import { useNetworkState } from "@uidotdev/usehooks"
 import { nanoid } from "nanoid/non-secure"
@@ -40,6 +41,7 @@ export interface ConnectionContext {
       action: A
     ) => Promise<ActionResult<A>>
   }
+  lastSyncTimestamp: string | null
   timestamp: () => string
   pushMoves: (moves: MoveOperation[]) => Promise<void>
   fetchSubtree: (
@@ -69,8 +71,12 @@ export const Connection = ({ children }: ConnectionProps) => {
   const [connected, setConnected] = useState(false)
   const [hydrated, setHydrated] = useState(false)
   const [status, setStatus] = useState<string | null>(null)
+  const workerInitializedRef = useRef<boolean>(false)
   const [workerInitialized, setWorkerInitialized] = useState<boolean>(false)
   const [clients, setClients] = useState<string[]>([])
+  const [lastServerSyncTimestamp, setLastServerSyncTimestamp] = useState<
+    string | null
+  >(null)
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   const worker = useMemo(() => {
@@ -105,6 +111,7 @@ export const Connection = ({ children }: ConnectionProps) => {
 
     waitForResult(init(room)).then(({ lastSyncTimestamp }) => {
       setWorkerInitialized(true)
+      workerInitializedRef.current = true
 
       if (lastSyncTimestamp) {
         setHydrated(true)
@@ -122,7 +129,7 @@ export const Connection = ({ children }: ConnectionProps) => {
       lastSyncTimestamp(clientId)
     )
 
-    console.log("syncTimestamp", syncTimestamp)
+    setLastServerSyncTimestamp(syncTimestamp)
 
     const res = await fetch(
       `${import.meta.env.VITE_PARTYKIT_HOST}/parties/main/${room}`,
@@ -204,6 +211,12 @@ export const Connection = ({ children }: ConnectionProps) => {
         await worker.waitForResult(insertMoves(operations))
       }
 
+      const syncTimestamp = await worker.waitForResult(
+        lastSyncTimestamp(clientId)
+      )
+
+      setLastServerSyncTimestamp(syncTimestamp)
+
       setHydrated(true)
 
       toast.success(`Synced ${processed} operations.`, {
@@ -257,9 +270,11 @@ export const Connection = ({ children }: ConnectionProps) => {
         didConnectInitially.current = true
 
         // Wait for the worker to initialize.
-        if (!workerInitialized) {
-          await new Promise((resolve) => setTimeout(resolve, 1000))
+        while (!workerInitializedRef.current) {
+          await new Promise((resolve) => setTimeout(resolve, 50))
         }
+
+        pushPendingMoves()
 
         if (!live) {
           // Pull moves from the server.
@@ -339,15 +354,33 @@ export const Connection = ({ children }: ConnectionProps) => {
     [room, worker]
   )
 
+  /**
+   * Push pending moves to the server.
+   */
+  const pushPendingMoves = useCallback(async () => {
+    const moves = await worker.waitForResult(pendingMoves(clientId))
+
+    console.log("Pending moves", moves)
+
+    if (moves.length > 0) {
+      await pushMoves(moves)
+    }
+  }, [pushMoves, worker, clientId])
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   useEffect(() => {
     if (online) {
+      /**
+       * When reconnecting, push and pull moves.
+       */
       if (didConnectInitially.current) {
         socket.reconnect()
-      }
 
-      if (!live) {
-        pullMoves()
+        if (!live) {
+          pullMoves()
+        }
+
+        pushPendingMoves()
       }
     } else {
       socket.close()
@@ -366,6 +399,7 @@ export const Connection = ({ children }: ConnectionProps) => {
       clientId,
       worker: { ...worker, initialized: workerInitialized },
       timestamp,
+      lastSyncTimestamp: lastServerSyncTimestamp,
       pushMoves,
       fetchSubtree,
     }),
@@ -379,6 +413,7 @@ export const Connection = ({ children }: ConnectionProps) => {
       clientId,
       live,
       timestamp,
+      lastServerSyncTimestamp,
       pushMoves,
       fetchSubtree,
     ]

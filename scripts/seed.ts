@@ -74,7 +74,7 @@ async function main() {
 
   const moves = Array.from(
     {
-      length: numberOfNodes * 3,
+      length: numberOfNodes * 2,
     },
     (_, i): MoveOperation => {
       const node = nodes[Math.floor(Math.random() * numberOfNodes)]
@@ -131,11 +131,11 @@ async function main() {
   )
 
   while (insertOperations.length > 0) {
-    const batch = moves.splice(0, 1000)
+    const batch = insertOperations.splice(0, 1000)
     const before = Date.now()
     // await CRDT.insertMoveOperations(driver, batch)
     await driver.sql.unsafe(
-      `INSERT INTO op_log_${room} (timestamp, node_id, old_parent_id, new_parent_id, client_id, sync_timestamp) VALUES ${batch.map((op) => `('${op.timestamp}', '${op.node_id}', '${op.old_parent_id}', '${op.new_parent_id}', '${op.client_id}', '${op.sync_timestamp}')`).join(",")}`,
+      `INSERT INTO op_log_${room} (timestamp, node_id, old_parent_id, new_parent_id, client_id, sync_timestamp) VALUES ${batch.map((op) => `('${op.timestamp}', '${op.node_id}', ${op.old_parent_id ? `'${op.old_parent_id}'` : "NULL"}, ${op.new_parent_id ? `'${op.new_parent_id}'` : "NULL"}, '${op.client_id}', '${op.sync_timestamp}')`).join(",")}`,
     )
     const after = Date.now()
     console.log(`Batch: ${after - before}ms`)

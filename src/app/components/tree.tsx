@@ -25,7 +25,8 @@ export interface TreeProps {
 }
 
 export const Tree = ({ className, virtual, tree, onToggle }: TreeProps) => {
-  const { worker, clientId, timestamp, pushMoves } = useConnection()
+  const { worker, clientId, timestamp, pushMoves, lastSyncTimestamp } =
+    useConnection()
   const { ref, width, height } = useResizeObserver()
 
   const onCreate = useCallback<CreateHandler<Node>>(
@@ -42,6 +43,7 @@ export const Tree = ({ className, virtual, tree, onToggle }: TreeProps) => {
         new_parent_id: parentId,
         client_id: clientId,
         timestamp: timestamp(),
+        last_sync_timestamp: lastSyncTimestamp,
       }
 
       // Insert into virtual tree
@@ -56,7 +58,7 @@ export const Tree = ({ className, virtual, tree, onToggle }: TreeProps) => {
         id: move.node_id,
       }
     },
-    [clientId, timestamp, worker, pushMoves]
+    [clientId, timestamp, worker, pushMoves, lastSyncTimestamp]
   )
 
   const onRename = useCallback<RenameHandler<Node>>(({ id, name }) => {}, [])
@@ -78,6 +80,7 @@ export const Tree = ({ className, virtual, tree, onToggle }: TreeProps) => {
           new_parent_id: parentId,
           client_id: clientId,
           timestamp: timestamp(),
+          last_sync_timestamp: lastSyncTimestamp,
         })
       )
 
@@ -91,7 +94,7 @@ export const Tree = ({ className, virtual, tree, onToggle }: TreeProps) => {
 
       pushMoves(moves)
     },
-    [clientId, timestamp, worker, pushMoves]
+    [clientId, timestamp, worker, pushMoves, lastSyncTimestamp]
   )
 
   const onDelete = useCallback<DeleteHandler<Node>>(
@@ -109,6 +112,7 @@ export const Tree = ({ className, virtual, tree, onToggle }: TreeProps) => {
           new_parent_id: "TOMBSTONE",
           client_id: clientId,
           timestamp: timestamp(),
+          last_sync_timestamp: lastSyncTimestamp,
         })
       )
 
@@ -122,7 +126,7 @@ export const Tree = ({ className, virtual, tree, onToggle }: TreeProps) => {
 
       pushMoves(moves)
     },
-    [clientId, timestamp, worker, pushMoves]
+    [clientId, timestamp, worker, pushMoves, lastSyncTimestamp]
   )
 
   if (!tree)

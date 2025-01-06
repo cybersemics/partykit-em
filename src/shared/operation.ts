@@ -32,6 +32,11 @@ export type MoveOperation = {
    * The time the operation was synced to the server.
    */
   sync_timestamp?: string | null
+
+  /**
+   * The knowledge cutoff of the client at the time of the operation.
+   */
+  last_sync_timestamp?: string | null
 }
 
 export type UpdateOperation = {

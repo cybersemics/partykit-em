@@ -126,6 +126,21 @@ async function setup() {
         return respond(action, result)
       }
 
+      case "pendingMoves": {
+        invariant(driver)
+
+        const { clientId } = action
+
+        const result = await driver.execute<MoveOperation>(sql`
+          SELECT * FROM op_log
+          WHERE sync_timestamp IS NULL
+            AND client_id = '${clientId}'
+          ORDER BY timestamp ASC
+        `)
+
+        return respond(action, result)
+      }
+
       case "insertMoves": {
         invariant(driver)
 

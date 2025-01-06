@@ -27,7 +27,10 @@ export const useVirtualTree = () => {
       if (state[id]?.children) return
 
       state[id].loading = true
-      const nodes = await fetchSubtree(id)
+      const nodes = await fetchSubtree(id).catch(async (e) => {
+        // Retry once, in case the room is not ready yet
+        return fetchSubtree(id)
+      })
       state[id].loading = false
 
       if (!state[id].children) state[id].children = []

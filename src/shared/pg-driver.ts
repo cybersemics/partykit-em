@@ -23,7 +23,7 @@ export class PostgresDriver extends Driver {
     })
   }
 
-  private getTableName(base: string): string {
+  private suffix(base: string): string {
     return `${base}_${this.roomId}`
   }
 
@@ -33,10 +33,10 @@ export class PostgresDriver extends Driver {
   private transformSql(sql: string): string {
     // Replace table names with prefixed versions
     let transformed = sql
-      .replace(/\bnodes\b/g, this.getTableName("nodes"))
-      .replace(/\bpayloads\b/g, this.getTableName("payloads"))
-      .replace(/\bop_log\b/g, this.getTableName("op_log"))
-      .replace(/\bclients\b/g, this.getTableName("clients"))
+      .replace(/\bnodes\b/g, this.suffix("nodes"))
+      .replace(/\bpayloads\b/g, this.suffix("payloads"))
+      .replace(/\bop_log\b/g, this.suffix("op_log"))
+      .replace(/\bclients\b/g, this.suffix("clients"))
 
     // Convert SQLite's INSERT OR IGNORE to PostgreSQL's INSERT ... ON CONFLICT DO NOTHING
     if (sql.includes("INSERT OR IGNORE")) {
@@ -110,7 +110,7 @@ export class PostgresDriver extends Driver {
     await this.executeScript({
       sql: `
         -- Function to process an entire batch of move operations atomically
-        CREATE OR REPLACE FUNCTION ${this.getTableName("process_move_operations")}(
+        CREATE OR REPLACE FUNCTION ${this.suffix("process_move_operations")}(
           p_operations JSONB
         ) RETURNS void AS $$
         DECLARE
@@ -141,7 +141,7 @@ export class PostgresDriver extends Driver {
           WHERE id IS NOT NULL;
 
           -- Ensure all nodes exist
-          INSERT INTO ${this.getTableName("nodes")} (id)
+          INSERT INTO ${this.suffix("nodes")} (id)
           SELECT UNNEST(nodes)
           ON CONFLICT (id) DO NOTHING;
 
@@ -150,7 +150,7 @@ export class PostgresDriver extends Driver {
             SELECT op_data 
             FROM jsonb_array_elements(p_operations) AS op_data
           LOOP
-            INSERT INTO ${this.getTableName("op_log")}
+            INSERT INTO ${this.suffix("op_log")}
               (timestamp, node_id, old_parent_id, new_parent_id, client_id, sync_timestamp)
             VALUES (
               op_record.op_data->>'timestamp',
@@ -164,10 +164,10 @@ export class PostgresDriver extends Driver {
           END LOOP;
 
           -- Reset moved nodes to their state before minTimestamp
-          UPDATE ${this.getTableName("nodes")} n
+          UPDATE ${this.suffix("nodes")} n
           SET parent_id = (
             SELECT old_parent_id
-            FROM ${this.getTableName("op_log")}
+            FROM ${this.suffix("op_log")}
             WHERE node_id = n.id
               AND timestamp >= min_timestamp
             ORDER BY timestamp ASC
@@ -175,30 +175,32 @@ export class PostgresDriver extends Driver {
           )
           WHERE id IN (
             SELECT DISTINCT node_id
-            FROM ${this.getTableName("op_log")}
+            FROM ${this.suffix("op_log")}
             WHERE timestamp >= min_timestamp
           );
 
           -- Apply moves in timestamp order, checking for cycles
           FOR move_record IN 
-            SELECT node_id, new_parent_id
-            FROM ${this.getTableName("op_log")}
-            WHERE timestamp >= min_timestamp
-            ORDER BY timestamp ASC
+            SELECT 
+              o.node_id, 
+              o.new_parent_id
+            FROM ${this.suffix("op_log")} o
+            WHERE o.timestamp >= min_timestamp
+            ORDER BY o.timestamp ASC
           LOOP
             -- Check for cycles using recursive CTE
             IF NOT EXISTS (
               WITH RECURSIVE ancestors AS (
                 -- Start from the new parent
                 SELECT id, parent_id, 1 as depth
-                FROM ${this.getTableName("nodes")}
+                FROM ${this.suffix("nodes")}
                 WHERE id = move_record.new_parent_id
                 
                 UNION ALL
                 
                 -- Follow parent links up, with depth limit
                 SELECT n.id, n.parent_id, a.depth + 1
-                FROM ${this.getTableName("nodes")} n
+                FROM ${this.suffix("nodes")} n
                 JOIN ancestors a ON n.id = a.parent_id
                 WHERE n.parent_id IS NOT NULL 
                   AND n.parent_id != move_record.new_parent_id
@@ -207,7 +209,7 @@ export class PostgresDriver extends Driver {
               SELECT 1 FROM ancestors WHERE id = move_record.node_id
             ) THEN
               -- Apply the move if it won't create a cycle
-              UPDATE ${this.getTableName("nodes")}
+              UPDATE ${this.suffix("nodes")}
               SET parent_id = move_record.new_parent_id
               WHERE id = move_record.node_id;
             END IF;
@@ -229,18 +231,18 @@ export class PostgresDriver extends Driver {
     await this.executeScript({
       sql: `
         -- Create tables
-        CREATE TABLE IF NOT EXISTS ${this.getTableName("nodes")} (
+        CREATE TABLE IF NOT EXISTS ${this.suffix("nodes")} (
           id TEXT PRIMARY KEY,
           parent_id TEXT NULL
         );
 
-        CREATE TABLE IF NOT EXISTS ${this.getTableName("payloads")} (
+        CREATE TABLE IF NOT EXISTS ${this.suffix("payloads")} (
           node_id TEXT NOT NULL,
           content TEXT,
           updated_at TEXT NOT NULL
         );
 
-        CREATE TABLE IF NOT EXISTS ${this.getTableName("op_log")} (
+        CREATE TABLE IF NOT EXISTS ${this.suffix("op_log")} (
           timestamp TEXT PRIMARY KEY,
           node_id TEXT NULL,
           old_parent_id TEXT NULL,
@@ -249,23 +251,23 @@ export class PostgresDriver extends Driver {
           sync_timestamp TEXT -- The time the operation was synced to the server.
         );
 
-        CREATE TABLE IF NOT EXISTS ${this.getTableName("clients")} (
+        CREATE TABLE IF NOT EXISTS ${this.suffix("clients")} (
           id TEXT PRIMARY KEY,
           last_seen TEXT NOT NULL
         );
 
         -- Create indexes
-        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_nodes_id ON ${this.getTableName("nodes")}(id);
-        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_nodes_parent_id ON ${this.getTableName("nodes")}(parent_id);
-        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_op_log_timestamp ON ${this.getTableName("op_log")}(timestamp);
-        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_payloads_node_id ON ${this.getTableName("payloads")}(node_id);
-        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_op_log_sync_timestamp ON ${this.getTableName("op_log")}(sync_timestamp);
-        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_op_log_node_id ON ${this.getTableName("op_log")}(node_id);
-        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_op_log_node_timestamp ON ${this.getTableName("op_log")}(node_id, timestamp);
-        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_op_log_timestamp_node ON ${this.getTableName("op_log")}(timestamp, node_id);
+        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_nodes_id ON ${this.suffix("nodes")}(id);
+        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_nodes_parent_id ON ${this.suffix("nodes")}(parent_id);
+        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_op_log_timestamp ON ${this.suffix("op_log")}(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_payloads_node_id ON ${this.suffix("payloads")}(node_id);
+        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_op_log_sync_timestamp ON ${this.suffix("op_log")}(sync_timestamp);
+        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_op_log_node_id ON ${this.suffix("op_log")}(node_id);
+        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_op_log_node_timestamp ON ${this.suffix("op_log")}(node_id, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_op_log_timestamp_node ON ${this.suffix("op_log")}(timestamp, node_id);
 
         -- Create the root and tombstone nodes
-        INSERT INTO ${this.getTableName("nodes")} (id, parent_id)
+        INSERT INTO ${this.suffix("nodes")} (id, parent_id)
         VALUES ('ROOT', NULL), ('TOMBSTONE', NULL)
         ON CONFLICT (id) DO NOTHING;
       `,
@@ -290,10 +292,10 @@ export class PostgresDriver extends Driver {
       nodes: number
     }>(sqlTemplate`
       SELECT 
-        (SELECT COUNT(1) FROM ${this.getTableName("op_log")} 
+        (SELECT COUNT(1) FROM ${this.suffix("op_log")} 
          WHERE sync_timestamp >= '${from}' AND sync_timestamp <= '${until}'
         ) as operations,
-        (SELECT reltuples::bigint FROM pg_class WHERE relname = '${this.getTableName("nodes")}') as nodes;
+        (SELECT reltuples::bigint FROM pg_class WHERE relname = '${this.suffix("nodes")}') as nodes;
     `)
 
     return {
@@ -328,7 +330,7 @@ export class PostgresDriver extends Driver {
       .unsafe(
         sqlTemplate`
         SELECT * 
-        FROM ${this.getTableName("op_log")}
+        FROM ${this.suffix("op_log")}
         WHERE sync_timestamp >= '${from}'
           AND sync_timestamp <= '${until}'
         ORDER BY timestamp ASC 
@@ -353,7 +355,7 @@ export class PostgresDriver extends Driver {
     // Make a single call to process all operations atomically
     await this.executeScript({
       sql: `
-        SELECT ${this.getTableName("process_move_operations")}(
+        SELECT ${this.suffix("process_move_operations")}(
           '${JSON.stringify(operations)}'::jsonb
         );
       `,
