@@ -26,6 +26,7 @@ import { useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import { type Message, push, subtree, syncStream } from "../../shared/messages"
 import type { MoveOperation } from "../../shared/operation"
+import * as Timing from "../lib/timing"
 import SQLWorker from "../worker/sql.worker?worker"
 
 export interface ConnectionContext {
@@ -198,7 +199,6 @@ export const Connection = ({ children }: ConnectionProps) => {
           }
         )
 
-        console.log(`Inserting ${operations.length} operations`)
         await worker.waitForResult(insertMoves(operations))
       }
 
@@ -210,6 +210,8 @@ export const Connection = ({ children }: ConnectionProps) => {
         )
         await worker.waitForResult(insertMoves(operations))
       }
+
+      Timing.measureOnce("replication")
 
       const syncTimestamp = await worker.waitForResult(
         lastSyncTimestamp(clientId)
@@ -253,6 +255,8 @@ export const Connection = ({ children }: ConnectionProps) => {
       ).then(
         (res) => res.json() as Promise<{ id: string; parent_id: string }[]>
       )
+
+      Timing.measureOnce("interactive")
 
       return nodes
     },
@@ -298,6 +302,8 @@ export const Connection = ({ children }: ConnectionProps) => {
           }
 
           case "push": {
+            Timing.timestamp("push:receive")
+
             const moveOps = data.operations.filter(
               (op): op is MoveOperation => op.type === "MOVE"
             )
@@ -331,6 +337,8 @@ export const Connection = ({ children }: ConnectionProps) => {
 
   const pushMoves = useCallback(
     async (moves: MoveOperation[]) => {
+      Timing.timestamp("push:send")
+
       const { sync_timestamp } = await fetch(
         `${import.meta.env.VITE_PARTYKIT_HOST}/parties/main/${room}`,
         {
@@ -360,12 +368,17 @@ export const Connection = ({ children }: ConnectionProps) => {
   const pushPendingMoves = useCallback(async () => {
     const moves = await worker.waitForResult(pendingMoves(clientId))
 
-    console.log("Pending moves", moves)
-
     if (moves.length > 0) {
       await pushMoves(moves)
     }
   }, [pushMoves, worker, clientId])
+
+  useEffect(() => {
+    if (hydrated) {
+      // Race with subtree fetch
+      Timing.measureOnce("interactive")
+    }
+  }, [hydrated])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   useEffect(() => {
