@@ -21,7 +21,7 @@ import {
   useRef,
   useState,
 } from "react"
-import { useParams } from "react-router-dom"
+import { useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import { type Message, push, subtree, syncStream } from "../../shared/messages"
 import type { MoveOperation } from "../../shared/operation"
@@ -60,6 +60,8 @@ export interface ConnectionProps {
 
 export const Connection = ({ children }: ConnectionProps) => {
   const room = useParams().roomId ?? nanoid()
+  const [searchParams] = useSearchParams()
+  const live = searchParams.get("live") !== null
 
   const { clientId } = useClientId()
 
@@ -259,8 +261,10 @@ export const Connection = ({ children }: ConnectionProps) => {
           await new Promise((resolve) => setTimeout(resolve, 1000))
         }
 
-        // Pull moves from the server.
-        await pullMoves()
+        if (!live) {
+          // Pull moves from the server.
+          await pullMoves()
+        }
       }
     },
     async onMessage(evt) {
@@ -340,6 +344,9 @@ export const Connection = ({ children }: ConnectionProps) => {
     if (online) {
       if (didConnectInitially.current) {
         socket.reconnect()
+      }
+
+      if (!live) {
         pullMoves()
       }
     } else {
@@ -348,12 +355,12 @@ export const Connection = ({ children }: ConnectionProps) => {
       setClients([])
       setStatus(null)
     }
-  }, [online])
+  }, [online, live])
 
   const value = useMemo(
     () => ({
       connected,
-      hydrated,
+      hydrated: hydrated && !live,
       status,
       clients,
       clientId,
@@ -370,6 +377,7 @@ export const Connection = ({ children }: ConnectionProps) => {
       worker,
       workerInitialized,
       clientId,
+      live,
       timestamp,
       pushMoves,
       fetchSubtree,
