@@ -246,6 +246,7 @@ export const Connection = ({ children }: ConnectionProps) => {
    */
   const fetchSubtree = useCallback(
     async (id: string, depth = 1) => {
+      const start = performance.now()
       const nodes = await fetch(
         `${import.meta.env.VITE_PARTYKIT_HOST}/parties/main/${room}`,
         {
@@ -254,6 +255,14 @@ export const Connection = ({ children }: ConnectionProps) => {
         }
       ).then(
         (res) => res.json() as Promise<{ id: string; parent_id: string }[]>
+      )
+      const end = performance.now()
+
+      console.log(
+        `%c[FOREGROUND] Took ${end - start}ms. (${id} – ${
+          nodes.length
+        } children)`,
+        "color: teal; font-weight: bold; font-size: 12px;"
       )
 
       Timing.measureOnce("interactive")
