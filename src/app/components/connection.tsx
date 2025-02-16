@@ -7,6 +7,7 @@ import {
   acknowledgeMoves,
   init,
   insertMoves,
+  insertVerbatim,
   lastSyncTimestamp,
   pendingMoves,
 } from "@/worker/actions"
@@ -24,7 +25,14 @@ import {
 } from "react"
 import { useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
-import { type Message, push, subtree, syncStream } from "../../shared/messages"
+import {
+  type Message,
+  push,
+  subtree,
+  syncFull,
+  syncStream,
+} from "../../shared/messages"
+import type { Node } from "../../shared/node"
 import type { MoveOperation } from "../../shared/operation"
 import * as Timing from "../lib/timing"
 import SQLWorker from "../worker/sql.worker?worker"
@@ -136,7 +144,9 @@ export const Connection = ({ children }: ConnectionProps) => {
       `${import.meta.env.VITE_PARTYKIT_HOST}/parties/main/${room}`,
       {
         method: "POST",
-        body: JSON.stringify(syncStream(new Date(syncTimestamp))),
+        body: JSON.stringify(
+          syncStream(new Date(syncTimestamp ?? "1970-01-01"))
+        ),
       }
     )
 
@@ -242,6 +252,167 @@ export const Connection = ({ children }: ConnectionProps) => {
   }, [room, worker, clientId])
 
   /**
+   * Perform a full sync with the server, copying tables directly.
+   */
+  const performFullSync = useCallback(async () => {
+    const res = await fetch(
+      `${import.meta.env.VITE_PARTYKIT_HOST}/parties/main/${room}`,
+      {
+        method: "POST",
+        body: JSON.stringify(syncFull()),
+      }
+    )
+
+    const reader = res.body?.getReader()
+    if (!reader) throw new Error("No reader available")
+
+    // We'll use a single TextDecoder instance.
+    const decoder = new TextDecoder()
+    // Our accumulated binary data.
+    let binaryBuffer = new Uint8Array(0)
+    // We expect a 19-byte header (11 bytes signature + 4 bytes flags + 4 bytes header extension length).
+    const HEADER_LENGTH = 19
+    let headerParsed = false
+    let processed = 0
+    const operations: MoveOperation[] = []
+    const nodes: Node[] = []
+
+    // Set up a batch size constant.
+    const BATCH_SIZE = 2000
+    const syncToast: number | string | undefined = toast.loading("Syncing...", {
+      duration: Number.POSITIVE_INFINITY,
+    })
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (value) {
+          binaryBuffer = concatUint8Array(binaryBuffer, value)
+        }
+
+        // Parse and remove header if not already done.
+        if (!headerParsed && binaryBuffer.length >= HEADER_LENGTH) {
+          // Optionally verify the signature here.
+          binaryBuffer = binaryBuffer.subarray(HEADER_LENGTH)
+          headerParsed = true
+        }
+
+        // Process as many complete rows as possible from our binary buffer.
+        while (true) {
+          // Not enough data for column count?
+          if (binaryBuffer.length < 2) break
+          const ncols = readInt16(binaryBuffer, 0)
+          // End-of-data marker: a 16-bit value of -1.
+          if (ncols === -1) {
+            // Consume the marker and exit the row loop.
+            binaryBuffer = binaryBuffer.subarray(2)
+            break
+          }
+
+          // Try to parse one row.
+          let offset = 2
+          const row: (string | null)[] = []
+          let incompleteRow = false
+          for (let i = 0; i < ncols; i++) {
+            // Need 4 bytes for the column length.
+            if (binaryBuffer.length < offset + 4) {
+              incompleteRow = true
+              break
+            }
+            const colLength = readInt32(binaryBuffer, offset)
+            offset += 4
+            if (colLength === -1) {
+              row.push(null)
+            } else {
+              // Wait until we have the full column data.
+              if (binaryBuffer.length < offset + colLength) {
+                incompleteRow = true
+                break
+              }
+              const colData = binaryBuffer.subarray(offset, offset + colLength)
+              offset += colLength
+              // Decode the bytes into a string.
+              const field = decoder.decode(colData)
+              row.push(field)
+            }
+          }
+          if (incompleteRow) break
+
+          // Remove the parsed row bytes from our buffer.
+          binaryBuffer = binaryBuffer.subarray(offset)
+
+          // Process the row based on its type.
+          if (row[0] === "n") {
+            // Node row: [ "n", id, parent_id ]
+            nodes.push({ id: row[1]!, parent_id: row[2]! })
+          } else if (row[0] === "o") {
+            // Operation row: [ "o", null, null, timestamp, node_id, old_parent_id, new_parent_id, client_id, sync_timestamp ]
+            operations.push({
+              type: "MOVE",
+              timestamp: row[3]!,
+              node_id: row[4]!,
+              old_parent_id: row[5]!,
+              new_parent_id: row[6]!,
+              client_id: row[7]!,
+              sync_timestamp: row[8]!,
+            })
+          } else {
+            console.warn("Unknown row type:", row)
+          }
+          processed++
+
+          // Flush in batches.
+          if (nodes.length + operations.length >= BATCH_SIZE) {
+            await worker.waitForResult(insertVerbatim(operations, nodes))
+            // Clear our temporary arrays.
+            operations.length = 0
+            nodes.length = 0
+            // Update the progress toast.
+            toast.loading(`Syncing entries... (${processed})`, {
+              id: syncToast,
+            })
+          }
+        }
+      }
+
+      // Flush any remaining rows.
+      if (nodes.length || operations.length) {
+        await worker.waitForResult(insertVerbatim(operations, nodes))
+      }
+
+      if (binaryBuffer.length > 0) {
+        console.log("Remaining binary data:", binaryBuffer)
+      }
+
+      Timing.measureOnce("replication")
+
+      const syncTimestamp = await worker.waitForResult(
+        lastSyncTimestamp(clientId)
+      )
+      setLastServerSyncTimestamp(syncTimestamp)
+      setHydrated(true)
+
+      toast.success(`Synced ${processed} entries.`, {
+        id: syncToast,
+        duration: 1000,
+        dismissible: true,
+      })
+    } catch (e) {
+      toast.error("Failed to sync", {
+        id: syncToast,
+        description: "Please try again later",
+        duration: 1000,
+        dismissible: true,
+      })
+      throw e
+    } finally {
+      reader.releaseLock()
+      Notifier.notify()
+    }
+  }, [room, worker, clientId])
+
+  /**
    * Fetch a subtree from the server.
    */
   const fetchSubtree = useCallback(
@@ -290,8 +461,18 @@ export const Connection = ({ children }: ConnectionProps) => {
         pushPendingMoves()
 
         if (!live) {
-          // Pull moves from the server.
-          await pullMoves()
+          // Check last sync timestamp
+          const lastSync = await worker.waitForResult(
+            lastSyncTimestamp(clientId)
+          )
+
+          if (lastSync) {
+            // Pull moves from the server.
+            await pullMoves()
+          } else {
+            // Full sync
+            await performFullSync()
+          }
         }
       }
     },
@@ -446,4 +627,36 @@ export const Connection = ({ children }: ConnectionProps) => {
       {children}
     </ConnectionContext.Provider>
   )
+}
+
+/**
+ * Helper: Reads a 16-bit signed integer (big-endian) from the buffer at the given offset.
+ */
+function readInt16(buffer: Uint8Array, offset: number): number {
+  return new DataView(
+    buffer.buffer,
+    buffer.byteOffset,
+    buffer.byteLength
+  ).getInt16(offset, false)
+}
+
+/**
+ * Helper: Reads a 32-bit signed integer (big-endian) from the buffer at the given offset.
+ */
+function readInt32(buffer: Uint8Array, offset: number): number {
+  return new DataView(
+    buffer.buffer,
+    buffer.byteOffset,
+    buffer.byteLength
+  ).getInt32(offset, false)
+}
+
+/**
+ * Helper: Concatenates two Uint8Array instances.
+ */
+function concatUint8Array(a: Uint8Array, b: Uint8Array): Uint8Array {
+  const c = new Uint8Array(a.length + b.length)
+  c.set(a, 0)
+  c.set(b, a.length)
+  return c
 }

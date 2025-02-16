@@ -7,6 +7,7 @@ export type Message =
   | ReturnType<typeof connections>
   | ReturnType<typeof ping>
   | ReturnType<typeof syncStream>
+  | ReturnType<typeof syncFull>
   | ReturnType<typeof push>
   | ReturnType<typeof subtree>
 
@@ -49,6 +50,14 @@ export const syncStream = (lastSyncTimestamp: Date) => ({
   type: "sync:stream" as const,
   id: nanoid(),
   lastSyncTimestamp: lastSyncTimestamp.toISOString(),
+})
+
+/**
+ * Request a full sync from the server.
+ */
+export const syncFull = () => ({
+  type: "sync:full" as const,
+  id: nanoid(),
 })
 
 /**

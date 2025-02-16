@@ -1,3 +1,4 @@
+import { Readable } from "node:stream"
 import type { AbortSignal } from "@cloudflare/workers-types"
 import postgres from "postgres"
 import { Driver, type Transaction } from "./crdt"
@@ -360,5 +361,50 @@ export class PostgresDriver extends Driver {
         );
       `,
     })
+  }
+
+  /**
+   * Stream the sync tables in binary format.
+   */
+  async streamSyncTablesCopy(abort?: AbortSignal) {
+    // Run the combined COPY query and get a Node.js stream.
+    const q = this.sql`
+      COPY (
+        SELECT 'n' AS type,
+               id,
+               parent_id,
+               NULL::text AS timestamp,
+               NULL::text AS node_id,
+               NULL::text AS old_parent_id,
+               NULL::text AS new_parent_id,
+               NULL::text AS client_id,
+               NULL::text AS sync_timestamp
+        FROM ${this.sql(this.suffix("nodes"))}
+        UNION ALL
+        SELECT 'o' AS type,
+               NULL::text AS id,
+               NULL::text AS parent_id,
+               timestamp,
+               node_id,
+               old_parent_id,
+               new_parent_id,
+               client_id,
+               sync_timestamp
+        FROM ${this.sql(this.suffix("op_log"))}
+      ) TO STDOUT (FORMAT binary)
+    `
+
+    const nodeStream = await q.readable()
+
+    const cleanup = () => {
+      q.cancel()
+      console.log("Stream aborted, connection released.")
+    }
+
+    abort?.addEventListener("abort", cleanup)
+    nodeStream.on("error", cleanup)
+    nodeStream.on("end", cleanup)
+
+    return Readable.toWeb(nodeStream)
   }
 }

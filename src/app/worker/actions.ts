@@ -1,11 +1,12 @@
 import { nanoid } from "nanoid"
+import type { Node } from "../../shared/node"
 import type { MoveOperation } from "../../shared/operation"
 
 type ActionResults = {
   tree: Array<{ id: string; parent_id: string; content?: string | null }>
   opLog: Array<MoveOperation>
   pendingMoves: Array<MoveOperation>
-  lastSyncTimestamp: string
+  lastSyncTimestamp: string | null
   init: {
     lastSyncTimestamp: string | null
   }
@@ -45,6 +46,16 @@ export const insertMoves = (moves: Array<MoveOperation>) => ({
   moves,
 })
 
+export const insertVerbatim = (
+  moves: Array<MoveOperation>,
+  nodes: Array<Node>,
+) => ({
+  type: "insertVerbatim" as const,
+  id: nanoid(),
+  moves,
+  nodes,
+})
+
 export const lastSyncTimestamp = (clientId: string) => ({
   type: "lastSyncTimestamp" as const,
   clientId,
@@ -68,6 +79,7 @@ export type Action =
   | ReturnType<typeof opLog>
   | ReturnType<typeof pendingMoves>
   | ReturnType<typeof insertMoves>
+  | ReturnType<typeof insertVerbatim>
   | ReturnType<typeof lastSyncTimestamp>
   | ReturnType<typeof acknowledgeMoves>
 

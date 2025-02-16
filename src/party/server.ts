@@ -219,6 +219,25 @@ export default class Server implements Party.Server {
           })
         }
 
+        case "sync:full": {
+          try {
+            // Get the raw stream from the driver and pass it directly to the response
+            const stream = await this.driver.streamSyncTablesCopy(req.signal)
+
+            const response = new Response(stream as any, {
+              headers: {
+                "Content-Type": "application/octet-stream",
+                "Access-Control-Allow-Origin": "*",
+              },
+            })
+
+            return response
+          } catch (error) {
+            console.error("Error streaming sync tables", error)
+            return new Response("Internal server error", { status: 500 })
+          }
+        }
+
         case "subtree": {
           const { id, depth } = message
           const nodes = await CRDT.subtree(this.driver, id, depth)

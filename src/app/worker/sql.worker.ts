@@ -149,6 +149,19 @@ async function setup() {
         return respond(action)
       }
 
+      case "insertVerbatim": {
+        invariant(driver)
+
+        const { moves, nodes } = action
+
+        await driver.executeScript(sql`
+          ${moves.length ? `INSERT INTO op_log (timestamp, node_id, old_parent_id, new_parent_id, client_id, sync_timestamp) VALUES ${moves.map((move) => `('${move.timestamp}', '${move.node_id}', '${move.old_parent_id}', '${move.new_parent_id}', '${move.client_id}', '${move.sync_timestamp}')`).join(",")} ON CONFLICT DO NOTHING;` : ""}
+          ${nodes.length ? `INSERT INTO nodes (id, parent_id) VALUES ${nodes.map((node) => `('${node.id}', '${node.parent_id}')`).join(",")} ON CONFLICT DO NOTHING;` : ""}
+        `)
+
+        return respond(action)
+      }
+
       case "acknowledgeMoves": {
         invariant(driver)
 
@@ -167,7 +180,7 @@ async function setup() {
         const result = await driver.execute(sql`
           SELECT sync_timestamp FROM op_log WHERE client_id != '${clientId}' ORDER BY sync_timestamp DESC LIMIT 1
         `)
-        return respond(action, result[0]?.sync_timestamp ?? "1970-01-01")
+        return respond(action, result[0]?.sync_timestamp)
       }
 
       default: {
