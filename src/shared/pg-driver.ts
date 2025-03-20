@@ -11,7 +11,7 @@ export class PostgresDriver extends Driver {
 
   constructor(
     roomId: string,
-    config: { host: string; user: string; password: string; db: string },
+    config: { host: string; user: string; password: string; db: string }
   ) {
     super()
     this.roomId = roomId
@@ -258,14 +258,30 @@ export class PostgresDriver extends Driver {
         );
 
         -- Create indexes
-        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_nodes_id ON ${this.suffix("nodes")}(id);
-        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_nodes_parent_id ON ${this.suffix("nodes")}(parent_id);
-        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_op_log_timestamp ON ${this.suffix("op_log")}(timestamp);
-        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_payloads_node_id ON ${this.suffix("payloads")}(node_id);
-        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_op_log_sync_timestamp ON ${this.suffix("op_log")}(sync_timestamp);
-        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_op_log_node_id ON ${this.suffix("op_log")}(node_id);
-        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_op_log_node_timestamp ON ${this.suffix("op_log")}(node_id, timestamp);
-        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_op_log_timestamp_node ON ${this.suffix("op_log")}(timestamp, node_id);
+        CREATE INDEX IF NOT EXISTS idx_${this.roomId}_nodes_id ON ${this.suffix(
+        "nodes"
+      )}(id);
+        CREATE INDEX IF NOT EXISTS idx_${
+          this.roomId
+        }_nodes_parent_id ON ${this.suffix("nodes")}(parent_id);
+        CREATE INDEX IF NOT EXISTS idx_${
+          this.roomId
+        }_op_log_timestamp ON ${this.suffix("op_log")}(timestamp);
+        CREATE INDEX IF NOT EXISTS idx_${
+          this.roomId
+        }_payloads_node_id ON ${this.suffix("payloads")}(node_id);
+        CREATE INDEX IF NOT EXISTS idx_${
+          this.roomId
+        }_op_log_sync_timestamp ON ${this.suffix("op_log")}(sync_timestamp);
+        CREATE INDEX IF NOT EXISTS idx_${
+          this.roomId
+        }_op_log_node_id ON ${this.suffix("op_log")}(node_id);
+        CREATE INDEX IF NOT EXISTS idx_${
+          this.roomId
+        }_op_log_node_timestamp ON ${this.suffix("op_log")}(node_id, timestamp);
+        CREATE INDEX IF NOT EXISTS idx_${
+          this.roomId
+        }_op_log_timestamp_node ON ${this.suffix("op_log")}(timestamp, node_id);
 
         -- Create the root and tombstone nodes
         INSERT INTO ${this.suffix("nodes")} (id, parent_id)
@@ -285,7 +301,7 @@ export class PostgresDriver extends Driver {
     { from, until }: { from: string; until: string } = {
       from: "1970-01-01",
       until: new Date().toISOString(),
-    },
+    }
   ) {
     // Use a single query with multiple aggregates
     const [result] = await this.execute<{
@@ -296,7 +312,9 @@ export class PostgresDriver extends Driver {
         (SELECT COUNT(1) FROM ${this.suffix("op_log")} 
          WHERE sync_timestamp >= '${from}' AND sync_timestamp <= '${until}'
         ) as operations,
-        (SELECT reltuples::bigint FROM pg_class WHERE relname = '${this.suffix("nodes")}') as nodes;
+        (SELECT reltuples::bigint FROM pg_class WHERE relname = '${this.suffix(
+          "nodes"
+        )}') as nodes;
     `)
 
     return {
@@ -335,7 +353,7 @@ export class PostgresDriver extends Driver {
         WHERE sync_timestamp >= '${from}'
           AND sync_timestamp <= '${until}'
         ORDER BY timestamp ASC 
-      `.sql,
+      `.sql
       )
       .cursor(chunkSize)
 

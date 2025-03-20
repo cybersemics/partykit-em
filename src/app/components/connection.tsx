@@ -5,6 +5,7 @@ import {
   type Action,
   type ActionResult,
   acknowledgeMoves,
+  clear,
   init,
   insertMoves,
   insertVerbatim,
@@ -27,6 +28,7 @@ import { useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
 import {
   type Message,
+  ping,
   push,
   subtree,
   syncFull,
@@ -118,14 +120,20 @@ export const Connection = ({ children }: ConnectionProps) => {
         pendingCallbacks.set(action.id, resolve)
       })
 
-    waitForResult(init(room)).then(({ lastSyncTimestamp }) => {
-      setWorkerInitialized(true)
-      workerInitializedRef.current = true
+    waitForResult(init(room))
+      .then(async (res) => {
+        await waitForResult(clear())
 
-      if (lastSyncTimestamp) {
-        setHydrated(true)
-      }
-    })
+        return res
+      })
+      .then(({ lastSyncTimestamp }) => {
+        setWorkerInitialized(true)
+        workerInitializedRef.current = true
+
+        if (lastSyncTimestamp) {
+          setHydrated(true)
+        }
+      })
 
     return { instance: worker, waitForResult }
   }, [])
@@ -459,6 +467,10 @@ export const Connection = ({ children }: ConnectionProps) => {
         }
 
         pushPendingMoves()
+
+        setInterval(() => {
+          socket.send(JSON.stringify(ping()))
+        }, 20_000)
 
         if (!live) {
           // Check last sync timestamp
