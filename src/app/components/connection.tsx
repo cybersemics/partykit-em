@@ -31,7 +31,6 @@ import {
   ping,
   push,
   subtree,
-  syncFull,
   syncStream,
 } from "../../shared/messages"
 import type { Node } from "../../shared/node"
@@ -264,10 +263,9 @@ export const Connection = ({ children }: ConnectionProps) => {
    */
   const performFullSync = useCallback(async () => {
     const res = await fetch(
-      `${import.meta.env.VITE_PARTYKIT_HOST}/parties/main/${room}`,
+      `${import.meta.env.VITE_SYNC_HOST}/${room}/stream`,
       {
-        method: "POST",
-        body: JSON.stringify(syncFull()),
+        method: "GET",
       }
     )
 
@@ -286,7 +284,7 @@ export const Connection = ({ children }: ConnectionProps) => {
     const nodes: Node[] = []
 
     // Set up a batch size constant.
-    const BATCH_SIZE = 2000
+    const BATCH_SIZE = 5000
     const syncToast: number | string | undefined = toast.loading("Syncing...", {
       duration: Number.POSITIVE_INFINITY,
     })

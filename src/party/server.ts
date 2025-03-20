@@ -63,9 +63,9 @@ export default class Server implements Party.Server {
     this.room.broadcast(
       JSON.stringify(
         Messages.connections(
-          [...this.room.getConnections()].map((conn) => conn.id),
-        ),
-      ),
+          [...this.room.getConnections()].map((conn) => conn.id)
+        )
+      )
     )
   }
 
@@ -76,10 +76,10 @@ export default class Server implements Party.Server {
     this.room.broadcast(
       JSON.stringify(
         Messages.connections(
-          [...this.room.getConnections()].map((conn) => conn.id),
-        ),
+          [...this.room.getConnections()].map((conn) => conn.id)
+        )
       ),
-      [],
+      []
     )
   }
 
@@ -96,9 +96,9 @@ export default class Server implements Party.Server {
           sender.send(
             JSON.stringify(
               Messages.connections(
-                [...this.room.getConnections()].map((conn) => conn.id),
-              ),
-            ),
+                [...this.room.getConnections()].map((conn) => conn.id)
+              )
+            )
           )
 
           break
@@ -139,7 +139,7 @@ export default class Server implements Party.Server {
           const now = new Date()
 
           const moveOps = message.operations.filter(
-            (op): op is MoveOperation => op.type === "MOVE",
+            (op): op is MoveOperation => op.type === "MOVE"
           )
 
           if (!moveOps.length)
@@ -149,7 +149,7 @@ export default class Server implements Party.Server {
 
           this.room.broadcast(
             JSON.stringify(Messages.push(message.operations)),
-            [clientId],
+            [clientId]
           )
 
           // PostgreSQL-optimized CRDT implementation
@@ -159,7 +159,7 @@ export default class Server implements Party.Server {
               .map((op) => ({
                 ...op,
                 sync_timestamp: now.toISOString(),
-              })),
+              }))
           )
 
           return this.json({ sync_timestamp: now.toISOString() })
@@ -199,8 +199,10 @@ export default class Server implements Party.Server {
                 })) {
                   controller.enqueue(
                     encoder.encode(
-                      `${operations.map((op) => JSON.stringify(op)).join("\n")}\n`,
-                    ),
+                      `${operations
+                        .map((op) => JSON.stringify(op))
+                        .join("\n")}\n`
+                    )
                   )
                 }
 
@@ -217,25 +219,6 @@ export default class Server implements Party.Server {
               "Access-Control-Allow-Origin": "*",
             },
           })
-        }
-
-        case "sync:full": {
-          try {
-            // Get the raw stream from the driver and pass it directly to the response
-            const stream = await this.driver.streamSyncTablesCopy(req.signal)
-
-            const response = new Response(stream as any, {
-              headers: {
-                "Content-Type": "application/octet-stream",
-                "Access-Control-Allow-Origin": "*",
-              },
-            })
-
-            return response
-          } catch (error) {
-            console.error("Error streaming sync tables", error)
-            return new Response("Internal server error", { status: 500 })
-          }
         }
 
         case "subtree": {
