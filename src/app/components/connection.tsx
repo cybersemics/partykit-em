@@ -119,20 +119,14 @@ export const Connection = ({ children }: ConnectionProps) => {
         pendingCallbacks.set(action.id, resolve)
       })
 
-    waitForResult(init(room))
-      .then(async (res) => {
-        await waitForResult(clear())
+    waitForResult(init(room)).then(({ lastSyncTimestamp }) => {
+      setWorkerInitialized(true)
+      workerInitializedRef.current = true
 
-        return res
-      })
-      .then(({ lastSyncTimestamp }) => {
-        setWorkerInitialized(true)
-        workerInitializedRef.current = true
-
-        if (lastSyncTimestamp) {
-          setHydrated(true)
-        }
-      })
+      if (lastSyncTimestamp) {
+        setHydrated(true)
+      }
+    })
 
     return { instance: worker, waitForResult }
   }, [])
@@ -465,10 +459,6 @@ export const Connection = ({ children }: ConnectionProps) => {
         }
 
         pushPendingMoves()
-
-        setInterval(() => {
-          socket.send(JSON.stringify(ping()))
-        }, 20_000)
 
         if (!live) {
           // Check last sync timestamp

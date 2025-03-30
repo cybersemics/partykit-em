@@ -154,9 +154,39 @@ async function setup() {
 
         const { moves, nodes } = action
 
+        const stringify = (value?: string | null) =>
+          value ? `'${value}'` : "NULL"
+
         await driver.executeScript(sql`
-          ${moves.length ? `INSERT INTO op_log (timestamp, node_id, old_parent_id, new_parent_id, client_id, sync_timestamp) VALUES ${moves.map((move) => `('${move.timestamp}', '${move.node_id}', '${move.old_parent_id}', '${move.new_parent_id}', '${move.client_id}', '${move.sync_timestamp}')`).join(",")} ON CONFLICT DO NOTHING;` : ""}
-          ${nodes.length ? `INSERT INTO nodes (id, parent_id) VALUES ${nodes.map((node) => `('${node.id}', '${node.parent_id}')`).join(",")} ON CONFLICT DO NOTHING;` : ""}
+          ${
+            moves.length
+              ? `INSERT INTO op_log (timestamp, node_id, old_parent_id, new_parent_id, client_id, sync_timestamp) VALUES ${moves
+                  .map(
+                    (move) =>
+                      `(${[
+                        move.timestamp,
+                        move.node_id,
+                        move.old_parent_id,
+                        move.new_parent_id,
+                        move.client_id,
+                        move.sync_timestamp,
+                      ]
+                        .map(stringify)
+                        .join(", ")})`
+                  )
+                  .join(",")} ON CONFLICT DO NOTHING;`
+              : ""
+          }
+          ${
+            nodes.length
+              ? `INSERT INTO nodes (id, parent_id) VALUES ${nodes
+                  .map(
+                    (node) =>
+                      `(${[node.id, node.parent_id].map(stringify).join(", ")})`
+                  )
+                  .join(",")} ON CONFLICT DO NOTHING;`
+              : ""
+          }
         `)
 
         return respond(action)
@@ -167,7 +197,9 @@ async function setup() {
 
         const { moves, syncTimestamp } = action
         await driver.execute(sql`
-          UPDATE op_log SET sync_timestamp = '${syncTimestamp}' WHERE timestamp IN (${moves.map((move) => `'${move.timestamp}'`).join(",")})
+          UPDATE op_log SET sync_timestamp = '${syncTimestamp}' WHERE timestamp IN (${moves
+          .map((move) => `'${move.timestamp}'`)
+          .join(",")})
         `)
         return respond(action)
       }

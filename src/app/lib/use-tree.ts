@@ -27,7 +27,7 @@ export const useTree = () => {
         callback()
       })
     },
-    [worker],
+    [worker]
   )
 
   useLayoutEffect(() => {
@@ -43,7 +43,7 @@ export const useTree = () => {
 }
 
 function buildTree(
-  nodes: Array<{ id: string; parent_id: string; content?: string | null }>,
+  nodes: Array<{ id: string; parent_id: string; content?: string | null }>
 ): Node[] {
   // Create a map to store nodes by their IDs for quick lookup
   const nodeMap = new Map<string, Node>()
