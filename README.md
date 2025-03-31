@@ -7,8 +7,9 @@ A proof-of-concept implementation of a tree-based CRDT algorithm with local SQLi
 - Tree-based CRDT algorithm for conflict-free collaborative editing
 - Local SQLite database for offline-first capabilities
 - Real-time collaboration via PartyKit WebSocket connections
+- Dedicated sync server for initial state replication with Postgres `COPY` streams
 - Full history synchronization through HTTP streaming
-- Separate room and Turso SQLite DB for each thoughtspace
+- Separate room and ~~Turso SQLite DB~~ dedicated Postgres tables for each thoughtspace
 - Foreground sync with all capabilities until local client is fully hydrated
 
 ## Getting Started
@@ -24,6 +25,7 @@ yarn dev
 This will open two terminal tabs:
 - Client development server
 - PartyKit development server
+- Sync development server
 
 You can also run them separately:
 ```bash
@@ -31,6 +33,9 @@ You can also run them separately:
 yarn client:dev
 
 # Run the PartyKit server
+yarn partykit:dev
+
+# Run the sync server
 yarn server:dev
 ```
 
@@ -51,6 +56,7 @@ yarn seed
 
 - `src/shared` - Shared code between client and server
 - `src/party/server.ts` - PartyKit server implementation
+- `src/sync-server/server.ts` - Sync server implementation
 - `src/app` - Client-side React application
 - `src/app/worker` - Web Workers for database operations
 
