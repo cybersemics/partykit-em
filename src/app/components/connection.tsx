@@ -28,6 +28,7 @@ import {
 } from "react"
 import { useParams, useSearchParams } from "react-router-dom"
 import { toast } from "sonner"
+import { retry } from "ts-retry-promise"
 import {
   type Message,
   ping,
@@ -460,6 +461,11 @@ export const Connection = ({ children }: ConnectionProps) => {
     room: room,
     id: clientId,
     host: import.meta.env.VITE_PARTYKIT_HOST,
+    onClose() {
+      setConnected(false)
+      setClients([])
+      setStatus(null)
+    },
     async onOpen() {
       setConnected(true)
 
@@ -598,7 +604,10 @@ export const Connection = ({ children }: ConnectionProps) => {
           pullMoves()
         }
 
-        pushPendingMoves()
+        retry(() => pushPendingMoves(), {
+          delay: 1000,
+          retries: 5,
+        })
       }
     } else {
       socket.close()
