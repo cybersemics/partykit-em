@@ -48,6 +48,7 @@
     "wa-sqlite": "rhashimoto/wa-sqlite"
   },
   "devDependencies": {
+    "@biomejs/biome": "1.9.4",
     "@chialab/esbuild-plugin-meta-url": "^0.18.2",
     "@chialab/esbuild-plugin-worker": "^0.18.1",
     "@inquirer/prompts": "^7.2.0",

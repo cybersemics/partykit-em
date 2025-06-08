@@ -5,7 +5,7 @@ import { type Statement, sql } from "./sql"
 export class SqliteDriver extends Driver {
   constructor(
     private readonly sqlite3: SQLiteAPI,
-    private readonly db: number,
+    private readonly db: number
   ) {
     super()
   }
@@ -29,6 +29,10 @@ export class SqliteDriver extends Driver {
         this.execute({ sql }),
       executeScript: ({ sql }: Statement) => this.executeScript({ sql }),
     })
+  }
+
+  close() {
+    return this.sqlite3.close(this.db)
   }
 
   private async exec({ sql /* bindings */ }: Statement) {
@@ -63,7 +67,7 @@ export class SqliteDriver extends Driver {
     }
 
     return results.map(({ columns, rows }) =>
-      rows.map((row) => Object.fromEntries(columns.map((c, i) => [c, row[i]]))),
+      rows.map((row) => Object.fromEntries(columns.map((c, i) => [c, row[i]])))
     )
   }
 
@@ -109,8 +113,8 @@ export class SqliteDriver extends Driver {
       INSERT OR IGNORE INTO nodes (id, parent_id) VALUES ('TOMBSTONE', NULL); 
     `)
 
-    await this.executeScript(sql`
-      ALTER TABLE op_log ADD COLUMN last_sync_timestamp TEXT;
-    `).catch(() => {})
+    await this.executeScript(
+      sql`ALTER TABLE op_log ADD COLUMN last_sync_timestamp TEXT;`
+    ).catch(() => {})
   }
 }

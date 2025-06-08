@@ -9,20 +9,44 @@ import { sql } from "../../shared/sql"
 import { SqliteDriver } from "../../shared/sqlite-driver"
 import type { Action, ActionResult } from "./actions"
 
+const OPEN_DB_LOCK = "wa-sqlite-open-db"
+
 function invariant(condition: unknown, message?: string) {
   if (!condition) {
     throw new Error(message ?? "Invariant failed")
   }
 }
 
-async function initSQLite(room: string) {
+async function initSQLite(
+  room: string
+): Promise<{ sqlite3: SQLiteAPI; db: number }> {
   const module = await SQLiteESMFactory()
   const sqlite3 = SQLite.Factory(module)
   const vfs = await VFS.create(room, module)
   sqlite3.vfs_register(vfs, true)
-  const db = await sqlite3.open_v2(room)
 
-  return { sqlite3, db }
+  let resolve: (value: { sqlite3: SQLiteAPI; db: number }) => void = () => {}
+  let reject: (reason?: any) => void = () => {}
+  const promise = new Promise<{ sqlite3: SQLiteAPI; db: number }>(
+    (res, rej) => {
+      resolve = res
+      reject = rej
+    }
+  )
+
+  navigator.locks.request(OPEN_DB_LOCK, async () => {
+    try {
+      const db = await sqlite3.open_v2(room)
+      resolve({ sqlite3, db })
+
+      // Keep the lock for another second.
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+    } catch (e: any) {
+      reject(e)
+    }
+  })
+
+  return promise
 }
 
 async function setup() {
@@ -57,6 +81,8 @@ async function setup() {
   messagePort.addEventListener("message", async (event) => {
     const action = event.data as Action
 
+    console.log("Worker handling action:", action.type)
+
     switch (action.type) {
       case "init": {
         const { room } = action
@@ -76,12 +102,37 @@ async function setup() {
         break
       }
 
+      case "close": {
+        try {
+          await driver.close()
+          console.log("DB closed")
+        } catch (error: any) {
+          if (error.name === "NoModificationAllowedError") {
+            // Try again.
+            try {
+              await new Promise((resolve) => setTimeout(resolve))
+              driver.close()
+            } catch (error: any) {
+              console.error("Failed to close db.")
+            }
+          }
+        }
+
+        return respond(action)
+      }
+
       case "clear": {
         invariant(driver)
 
-        await driver.execute(sql`DELETE FROM op_log`)
-        await driver.execute(sql`DELETE FROM nodes`)
-        await driver.execute(sql`DELETE FROM payloads`)
+        await driver.transaction(async (t) => {
+          await driver.execute(sql`DROP TABLE op_log`)
+          await driver.execute(sql`DROP TABLE nodes`)
+          await driver.execute(sql`DROP TABLE payloads`)
+
+          await t.commit()
+        })
+
+        await driver.createTables()
 
         return respond(action)
       }
@@ -157,7 +208,8 @@ async function setup() {
         const stringify = (value?: string | null) =>
           value ? `'${value}'` : "NULL"
 
-        await driver.executeScript(sql`
+        await driver.transaction(async (t) => {
+          await t.executeScript(sql`
           ${
             moves.length
               ? `INSERT INTO op_log (timestamp, node_id, old_parent_id, new_parent_id, client_id, sync_timestamp) VALUES ${moves
@@ -188,6 +240,9 @@ async function setup() {
               : ""
           }
         `)
+
+          await t.commit()
+        })
 
         return respond(action)
       }

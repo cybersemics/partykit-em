@@ -23,6 +23,11 @@ export const init = (room: string) => ({
   room,
 })
 
+export const close = () => ({
+  type: "close" as const,
+  id: nanoid(),
+})
+
 export const tree = () => ({
   type: "tree" as const,
   id: nanoid(),
@@ -48,7 +53,7 @@ export const insertMoves = (moves: Array<MoveOperation>) => ({
 
 export const insertVerbatim = (
   moves: Array<MoveOperation>,
-  nodes: Array<Node>,
+  nodes: Array<Node>
 ) => ({
   type: "insertVerbatim" as const,
   id: nanoid(),
@@ -64,7 +69,7 @@ export const lastSyncTimestamp = (clientId: string) => ({
 
 export const acknowledgeMoves = (
   moves: Array<MoveOperation>,
-  syncTimestamp: string,
+  syncTimestamp: string
 ) => ({
   type: "acknowledgeMoves" as const,
   id: nanoid(),
@@ -75,6 +80,7 @@ export const acknowledgeMoves = (
 export type Action =
   | ReturnType<typeof init>
   | ReturnType<typeof clear>
+  | ReturnType<typeof close>
   | ReturnType<typeof tree>
   | ReturnType<typeof opLog>
   | ReturnType<typeof pendingMoves>

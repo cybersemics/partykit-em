@@ -6,6 +6,7 @@ import {
   type ActionResult,
   acknowledgeMoves,
   clear,
+  close,
   init,
   insertMoves,
   insertVerbatim,
@@ -48,7 +49,7 @@ export interface ConnectionContext {
     instance: InstanceType<typeof SQLWorker>
     initialized: boolean
     waitForResult: <A extends Action & { id: string }>(
-      action: A
+      action: A,
     ) => Promise<ActionResult<A>>
   }
   lastSyncTimestamp: string | null
@@ -56,7 +57,7 @@ export interface ConnectionContext {
   pushMoves: (moves: MoveOperation[]) => Promise<void>
   fetchSubtree: (
     id: string,
-    depth?: number
+    depth?: number,
   ) => Promise<{ id: string; parent_id: string }[]>
 }
 
@@ -112,7 +113,7 @@ export const Connection = ({ children }: ConnectionProps) => {
      * Wait for a result from the worker.
      */
     const waitForResult = <A extends Action & { id: string }>(
-      action: A
+      action: A,
     ): Promise<ActionResult<A>> =>
       new Promise((resolve) => {
         port1.postMessage(action)
@@ -128,6 +129,17 @@ export const Connection = ({ children }: ConnectionProps) => {
       }
     })
 
+    window.addEventListener("beforeunload", async (e) => {
+      // Note: As we can't really enforce this running without `e.preventDefault()` (which
+      // triggers a system dialog that there's unsaved changes), we just call `close()` and
+      // hope that the worker is still alive.
+      // This might not be necessary at all, but can't hurt.
+
+      console.log("Closing connection...")
+
+      await waitForResult(close())
+    })
+
     return { instance: worker, waitForResult }
   }, [])
 
@@ -136,7 +148,7 @@ export const Connection = ({ children }: ConnectionProps) => {
    */
   const pullMoves = useCallback(async () => {
     const syncTimestamp = await worker.waitForResult(
-      lastSyncTimestamp(clientId)
+      lastSyncTimestamp(clientId),
     )
 
     setLastServerSyncTimestamp(syncTimestamp)
@@ -146,9 +158,9 @@ export const Connection = ({ children }: ConnectionProps) => {
       {
         method: "POST",
         body: JSON.stringify(
-          syncStream(new Date(syncTimestamp ?? "1970-01-01"))
+          syncStream(new Date(syncTimestamp ?? "1970-01-01")),
         ),
-      }
+      },
     )
 
     const reader = res.body?.getReader()
@@ -190,7 +202,7 @@ export const Connection = ({ children }: ConnectionProps) => {
               `Syncing ${header?.operations} operations...`,
               {
                 duration: Number.POSITIVE_INFINITY,
-              }
+              },
             )
             continue
           }
@@ -207,7 +219,7 @@ export const Connection = ({ children }: ConnectionProps) => {
           `Syncing ${processed}/${header?.operations} operations...`,
           {
             id: syncToast,
-          }
+          },
         )
 
         await worker.waitForResult(insertMoves(operations))
@@ -217,7 +229,7 @@ export const Connection = ({ children }: ConnectionProps) => {
       if (buffer.length > 0) {
         const lines = buffer.split("\n")
         const operations = lines.map(
-          (line) => JSON.parse(line) as MoveOperation
+          (line) => JSON.parse(line) as MoveOperation,
         )
         await worker.waitForResult(insertMoves(operations))
       }
@@ -225,7 +237,7 @@ export const Connection = ({ children }: ConnectionProps) => {
       Timing.measureOnce("replication")
 
       const syncTimestamp = await worker.waitForResult(
-        lastSyncTimestamp(clientId)
+        lastSyncTimestamp(clientId),
       )
 
       setLastServerSyncTimestamp(syncTimestamp)
@@ -260,7 +272,7 @@ export const Connection = ({ children }: ConnectionProps) => {
       `${import.meta.env.VITE_SYNC_HOST}/${room}/stream`,
       {
         method: "GET",
-      }
+      },
     )
 
     const reader = res.body?.getReader()
@@ -388,7 +400,7 @@ export const Connection = ({ children }: ConnectionProps) => {
       Timing.measureOnce("replication")
 
       const syncTimestamp = await worker.waitForResult(
-        lastSyncTimestamp(clientId)
+        lastSyncTimestamp(clientId),
       )
       setLastServerSyncTimestamp(syncTimestamp)
       setHydrated(true)
@@ -423,9 +435,9 @@ export const Connection = ({ children }: ConnectionProps) => {
         {
           method: "POST",
           body: JSON.stringify(subtree(id, depth)),
-        }
+        },
       ).then(
-        (res) => res.json() as Promise<{ id: string; parent_id: string }[]>
+        (res) => res.json() as Promise<{ id: string; parent_id: string }[]>,
       )
       const end = performance.now()
 
@@ -433,14 +445,14 @@ export const Connection = ({ children }: ConnectionProps) => {
         `%c[FOREGROUND] Took ${end - start}ms. (${id} – ${
           nodes.length
         } children)`,
-        "color: teal; font-weight: bold; font-size: 12px;"
+        "color: teal; font-weight: bold; font-size: 12px;",
       )
 
       Timing.measureOnce("interactive")
 
       return nodes
     },
-    [room]
+    [room],
   )
 
   const socket = usePartySocket({
@@ -463,7 +475,7 @@ export const Connection = ({ children }: ConnectionProps) => {
         if (!live) {
           // Check last sync timestamp
           const lastSync = await worker.waitForResult(
-            lastSyncTimestamp(clientId)
+            lastSyncTimestamp(clientId),
           )
 
           if (lastSync) {
@@ -495,7 +507,7 @@ export const Connection = ({ children }: ConnectionProps) => {
             Timing.timestamp("push:receive")
 
             const moveOps = data.operations.filter(
-              (op): op is MoveOperation => op.type === "MOVE"
+              (op): op is MoveOperation => op.type === "MOVE",
             )
             for (const move of moveOps) {
               insertIntoVirtualTree(move)
@@ -522,7 +534,7 @@ export const Connection = ({ children }: ConnectionProps) => {
    */
   const timestamp = useCallback(
     () => `${new Date().toISOString()}-${clientId}`,
-    [clientId]
+    [clientId],
   )
 
   const pushMoves = useCallback(
@@ -537,7 +549,7 @@ export const Connection = ({ children }: ConnectionProps) => {
             "Content-Type": "application/json",
           },
           body: JSON.stringify(push(moves)),
-        }
+        },
       ).then((res) => {
         if (!res.ok) {
           throw new Error("Failed to push moves")
@@ -549,7 +561,7 @@ export const Connection = ({ children }: ConnectionProps) => {
       await worker.waitForResult(acknowledgeMoves(moves, sync_timestamp))
       Notifier.notify()
     },
-    [room, worker]
+    [room, worker],
   )
 
   /**
@@ -619,7 +631,7 @@ export const Connection = ({ children }: ConnectionProps) => {
       lastServerSyncTimestamp,
       pushMoves,
       fetchSubtree,
-    ]
+    ],
   )
 
   return (
@@ -636,7 +648,7 @@ function readInt16(buffer: Uint8Array, offset: number): number {
   return new DataView(
     buffer.buffer,
     buffer.byteOffset,
-    buffer.byteLength
+    buffer.byteLength,
   ).getInt16(offset, false)
 }
 
@@ -647,7 +659,7 @@ function readInt32(buffer: Uint8Array, offset: number): number {
   return new DataView(
     buffer.buffer,
     buffer.byteOffset,
-    buffer.byteLength
+    buffer.byteLength,
   ).getInt32(offset, false)
 }
 
