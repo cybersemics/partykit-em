@@ -1,10 +1,11 @@
 import { Notifier } from "@/lib/notifier"
 import type { Node } from "@/lib/types"
+import { insertIntoLocalTree } from "@/lib/use-local-tree"
 import { insertIntoVirtualTree } from "@/lib/use-virtual-tree"
 import { cn } from "@/lib/utils"
 import { insertMoves } from "@/worker/actions"
 import { nanoid } from "nanoid/non-secure"
-import { useCallback } from "react"
+import { useCallback, useLayoutEffect } from "react"
 import {
   Tree as Arborist,
   type CreateHandler,
@@ -47,7 +48,8 @@ export const Tree = ({ className, virtual, tree, onToggle }: TreeProps) => {
       }
 
       // Insert into virtual tree
-      insertIntoVirtualTree(move)
+      if (virtual) insertIntoVirtualTree(move)
+      else insertIntoLocalTree(move)
 
       await worker.waitForResult(insertMoves([move]))
       Notifier.notify()
@@ -58,7 +60,7 @@ export const Tree = ({ className, virtual, tree, onToggle }: TreeProps) => {
         id: move.node_id,
       }
     },
-    [clientId, timestamp, worker, pushMoves, lastSyncTimestamp]
+    [clientId, timestamp, worker, pushMoves, lastSyncTimestamp, virtual],
   )
 
   const onRename = useCallback<RenameHandler<Node>>(({ id, name }) => {}, [])
@@ -81,12 +83,13 @@ export const Tree = ({ className, virtual, tree, onToggle }: TreeProps) => {
           client_id: clientId,
           timestamp: timestamp(),
           last_sync_timestamp: lastSyncTimestamp,
-        })
+        }),
       )
 
       // Insert into virtual tree
       for (const move of moves) {
-        insertIntoVirtualTree(move)
+        if (virtual) insertIntoVirtualTree(move)
+        else insertIntoLocalTree(move)
       }
 
       await worker.waitForResult(insertMoves(moves))
@@ -94,7 +97,7 @@ export const Tree = ({ className, virtual, tree, onToggle }: TreeProps) => {
 
       pushMoves(moves)
     },
-    [clientId, timestamp, worker, pushMoves, lastSyncTimestamp]
+    [clientId, timestamp, worker, pushMoves, lastSyncTimestamp, virtual],
   )
 
   const onDelete = useCallback<DeleteHandler<Node>>(
@@ -113,12 +116,13 @@ export const Tree = ({ className, virtual, tree, onToggle }: TreeProps) => {
           client_id: clientId,
           timestamp: timestamp(),
           last_sync_timestamp: lastSyncTimestamp,
-        })
+        }),
       )
 
       // Insert into virtual tree
       for (const move of moves) {
-        insertIntoVirtualTree(move)
+        if (virtual) insertIntoVirtualTree(move)
+        else insertIntoLocalTree(move)
       }
 
       await worker.waitForResult(insertMoves(moves))
@@ -126,8 +130,12 @@ export const Tree = ({ className, virtual, tree, onToggle }: TreeProps) => {
 
       pushMoves(moves)
     },
-    [clientId, timestamp, worker, pushMoves, lastSyncTimestamp]
+    [clientId, timestamp, worker, pushMoves, lastSyncTimestamp, virtual],
   )
+
+  useLayoutEffect(() => {
+    onToggle?.("ROOT")
+  }, [onToggle])
 
   if (!tree)
     return (
@@ -135,7 +143,7 @@ export const Tree = ({ className, virtual, tree, onToggle }: TreeProps) => {
         ref={ref}
         className={cn(
           "bg-card border border-border rounded-lg p-2 shadow-sm flex justify-center items-center",
-          className
+          className,
         )}
       >
         Loading...
@@ -149,7 +157,7 @@ export const Tree = ({ className, virtual, tree, onToggle }: TreeProps) => {
         "relative bg-card border border-border rounded-lg p-2 shadow-sm",
         virtual &&
           "bg-blue-50/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_8px,rgba(96,165,250,0.05)_4px,rgba(96,165,250,0.05)_16px)]",
-        className
+        className,
       )}
     >
       <Arborist<Node>
@@ -168,9 +176,13 @@ export const Tree = ({ className, virtual, tree, onToggle }: TreeProps) => {
         {TreeNode}
       </Arborist>
 
-      {virtual && (
+      {virtual ? (
         <div className="absolute top-3 right-6 font-mono font-semibold uppercase text-blue-400">
           Virtual
+        </div>
+      ) : (
+        <div className="absolute top-3 right-6 font-mono font-semibold uppercase text-green-400">
+          Local
         </div>
       )}
     </div>

@@ -4,11 +4,9 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { Notifier } from "@/lib/notifier"
 import { cn } from "@/lib/utils"
 import { clear } from "@/worker/actions"
 import { Trash2, Users } from "lucide-react"
-import { toast } from "sonner"
 import { useConnection } from "./connection"
 import { Button } from "./ui/button"
 
@@ -19,7 +17,7 @@ export const StatusBar = () => {
     <div
       className={cn(
         "p-1 border-b border-border shadow-sm font-mono",
-        "bg-gray-50/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_8px,rgba(148,163,184,0.05)_4px,rgba(148,163,184,0.05)_16px)]"
+        "bg-gray-50/50 bg-[repeating-linear-gradient(45deg,transparent,transparent_8px,rgba(148,163,184,0.05)_4px,rgba(148,163,184,0.05)_16px)]",
       )}
     >
       <div className="px-4 container max-w-7xl mx-auto gap-1 flex flex-col md:flex-row justify-between md:items-center">
@@ -27,7 +25,7 @@ export const StatusBar = () => {
           <div
             className={cn(
               "size-2 rounded-full transition-colors",
-              connected ? "bg-green-500" : "bg-red-500"
+              connected ? "bg-green-500" : "bg-red-500",
             )}
             title={connected ? "Connected" : "Disconnected"}
           />
@@ -70,16 +68,7 @@ export const StatusBar = () => {
                   size="icon"
                   onClick={async () => {
                     await worker.waitForResult(clear())
-                    Notifier.notify()
-                    toast.success("Local database cleared.", {
-                      description: "Refresh the page to trigger fresh sync.",
-                      action: {
-                        label: "Refresh",
-                        onClick: () => {
-                          window.location.reload()
-                        },
-                      },
-                    })
+                    window.location.reload()
                   }}
                 >
                   <Trash2 className="size-4 text-red-500" />

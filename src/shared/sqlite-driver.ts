@@ -104,9 +104,9 @@ export class SqliteDriver extends Driver {
 
       -- Create indexes
       CREATE INDEX IF NOT EXISTS idx_nodes_id ON nodes(id);
-      CREATE INDEX IF NOT EXISTS idx_nodes_parent_id ON nodes(parent_id);
+      CREATE INDEX IF NOT EXISTS idx_nodes_parent_id_id ON nodes(parent_id, id);
       CREATE INDEX IF NOT EXISTS idx_op_log_timestamp ON op_log(timestamp);
-      CREATE INDEX IF NOT EXISTS idx_payloads_node_id ON payloads(node_id);
+      CREATE INDEX IF NOT EXISTS idx_payloads_covering ON payloads(node_id, content);
 
       -- Create the root and tombstone nodes
       INSERT OR IGNORE INTO nodes (id, parent_id) VALUES ('ROOT', NULL);

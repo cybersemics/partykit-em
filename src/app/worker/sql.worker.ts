@@ -132,8 +132,6 @@ async function setup() {
           await t.commit()
         })
 
-        await driver.createTables()
-
         return respond(action)
       }
 
@@ -159,6 +157,38 @@ async function setup() {
           )
           SELECT * FROM tree
         `)
+
+        return respond(action, result)
+      }
+
+      case "subtree": {
+        invariant(driver)
+
+        const now = performance.now()
+
+        const { nodeId } = action
+
+        const result = await driver.execute(sql`
+          WITH first_1000_children AS (
+            SELECT id, parent_id
+            FROM nodes 
+            WHERE parent_id = '${nodeId}' 
+            ORDER BY id 
+            LIMIT 1000
+          )
+          SELECT n.id, n.parent_id, p.content
+          FROM (
+            SELECT id, parent_id, 1 as level FROM first_1000_children
+            UNION ALL
+            SELECT c.id, c.parent_id, 2 as level 
+            FROM first_1000_children f
+            JOIN nodes c ON f.id = c.parent_id
+          ) n
+          LEFT JOIN payloads p ON n.id = p.node_id
+          ORDER BY n.level, n.id
+        `)
+
+        console.log(`Subtree query took ${performance.now() - now}ms`)
 
         return respond(action, result)
       }

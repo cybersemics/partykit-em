@@ -1,5 +1,6 @@
 import { Notifier } from "@/lib/notifier"
 import { useClientId } from "@/lib/use-client-id"
+import { insertIntoLocalTree } from "@/lib/use-local-tree"
 import { insertIntoVirtualTree } from "@/lib/use-virtual-tree"
 import {
   type Action,
@@ -510,7 +511,9 @@ export const Connection = ({ children }: ConnectionProps) => {
               (op): op is MoveOperation => op.type === "MOVE",
             )
             for (const move of moveOps) {
-              insertIntoVirtualTree(move)
+              if (live || !hydrated) {
+                insertIntoVirtualTree(move)
+              } else insertIntoLocalTree(move)
             }
             await worker.waitForResult(insertMoves(moveOps))
             Notifier.notify()
