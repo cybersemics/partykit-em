@@ -201,7 +201,7 @@ export const Connection = ({ children }: ConnectionProps) => {
           if (!header) {
             header = JSON.parse(line)
             syncToast = toast.loading(
-              `Syncing ${header?.operations} operations...`,
+              `Syncing ${header?.operations ?? 0} operations...`,
               {
                 duration: Number.POSITIVE_INFINITY,
               },
@@ -217,12 +217,15 @@ export const Connection = ({ children }: ConnectionProps) => {
         buffer = lines[lines.length - 1]
 
         processed += operations.length
-        toast.loading(
-          `Syncing ${processed}/${header?.operations} operations...`,
-          {
-            id: syncToast,
-          },
-        )
+
+        if (header?.operations) {
+          toast.loading(
+            `Syncing ${processed}/${header?.operations} operations...`,
+            {
+              id: syncToast,
+            },
+          )
+        }
 
         await worker.waitForResult(insertMoves(operations))
       }
