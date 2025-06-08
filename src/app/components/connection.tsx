@@ -270,6 +270,15 @@ export const Connection = ({ children }: ConnectionProps) => {
    * Perform a full sync with the server, copying tables directly.
    */
   const performFullSync = useCallback(async () => {
+    let total = -1
+
+    // Get total number of nodes and operations
+    fetch(`${import.meta.env.VITE_SYNC_HOST}/${room}/stats`)
+      .then((res) => res.json())
+      .then((data) => {
+        total = data.stats.nodes + data.stats.ops
+      })
+
     const res = await fetch(
       `${import.meta.env.VITE_SYNC_HOST}/${room}/stream`,
       {
@@ -383,9 +392,16 @@ export const Connection = ({ children }: ConnectionProps) => {
             operations.length = 0
             nodes.length = 0
             // Update the progress toast.
-            toast.loading(`Syncing entries... (${processed})`, {
-              id: syncToast,
-            })
+            toast.loading(
+              total > 0
+                ? `Syncing entries... (${processed}/${total} – ${Math.round(
+                    (processed / total) * 100,
+                  )}%)`
+                : `Syncing entries... (${processed})`,
+              {
+                id: syncToast,
+              },
+            )
           }
         }
       }

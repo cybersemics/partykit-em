@@ -21,6 +21,35 @@ const app = new Hono()
 
 app.use("*", cors())
 
+app.get("/:roomId/stats", async (c) => {
+  const roomId = c.req.param("roomId")
+
+  try {
+    const result = await sql`
+      SELECT 
+        SUM(CASE WHEN relname = ${suffix("nodes", roomId)} THEN reltuples ELSE 0 END) as nodes,
+        SUM(CASE WHEN relname = ${suffix("op_log", roomId)} THEN reltuples ELSE 0 END) as ops
+      FROM pg_class 
+      WHERE relname IN (${suffix("nodes", roomId)}, ${suffix("op_log", roomId)})
+    `
+
+    return Response.json({
+      stats: {
+        nodes: parseInt(result[0]?.nodes || 0),
+        ops: parseInt(result[0]?.ops || 0),
+      },
+    })
+  } catch (error) {
+    console.error(`Error getting stats for room ${roomId}:`, error)
+    return Response.json({
+      stats: {
+        nodes: 0,
+        ops: 0,
+      },
+    }, { status: 500 })
+  }
+})
+
 app.get("/:roomId/stream", async (c) => {
   const roomId = c.req.param("roomId")
 
