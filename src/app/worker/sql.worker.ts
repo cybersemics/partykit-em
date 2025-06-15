@@ -168,25 +168,29 @@ async function setup() {
 
         const { nodeId } = action
 
-        const result = await driver.execute(sql`
-          WITH first_1000_children AS (
-            SELECT id, parent_id
-            FROM nodes 
-            WHERE parent_id = '${nodeId}' 
-            ORDER BY id 
-            LIMIT 1000
-          )
-          SELECT n.id, n.parent_id, p.content
-          FROM (
-            SELECT id, parent_id, 1 as level FROM first_1000_children
-            UNION ALL
-            SELECT c.id, c.parent_id, 2 as level 
-            FROM first_1000_children f
-            JOIN nodes c ON f.id = c.parent_id
-          ) n
+        const children = await driver.execute(sql`
+          SELECT n.id, n.parent_id, p.content, 1 as level
+          FROM nodes n
           LEFT JOIN payloads p ON n.id = p.node_id
-          ORDER BY n.level, n.id
+          WHERE n.parent_id = '${nodeId}'
+          ORDER BY n.id
+          LIMIT 1000
         `)
+
+        if (children.length === 0) {
+          console.log(`Subtree query took ${performance.now() - now}ms`)
+          return respond(action, [])
+        }
+
+        const grandchildren = await driver.execute(sql`
+          SELECT n.id, n.parent_id, p.content, 2 as level
+          FROM nodes n
+          LEFT JOIN payloads p ON n.id = p.node_id
+          WHERE n.parent_id IN (${children.map((c) => `'${c.id}'`).join(",")})
+          ORDER BY n.id
+        `)
+
+        const result = [...children, ...grandchildren]
 
         console.log(`Subtree query took ${performance.now() - now}ms`)
 

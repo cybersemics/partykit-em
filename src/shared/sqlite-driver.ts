@@ -104,6 +104,7 @@ export class SqliteDriver extends Driver {
 
       -- Create indexes
       CREATE INDEX IF NOT EXISTS idx_nodes_id ON nodes(id);
+      CREATE INDEX IF NOT EXISTS idx_nodes_parent_id ON nodes(parent_id);
       CREATE INDEX IF NOT EXISTS idx_nodes_parent_id_id ON nodes(parent_id, id);
       CREATE INDEX IF NOT EXISTS idx_op_log_timestamp ON op_log(timestamp);
       CREATE INDEX IF NOT EXISTS idx_op_log_sync_timestamp ON op_log(sync_timestamp);
