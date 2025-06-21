@@ -33,7 +33,7 @@ export abstract class Driver {
 
 export const insertMoveOperations = async (
   driver: Driver,
-  operations: MoveOperation[],
+  operations: MoveOperation[]
 ) => {
   if (!operations.length) return
 
@@ -41,18 +41,22 @@ export const insertMoveOperations = async (
     return min < op.timestamp ? min : op.timestamp
   }, "2999-01-01T00:00:00Z")
 
-  // const checkpoint0 = performance.now()
+  const checkpoint0 = performance.now()
+
+  let checkpoint1 = 0
+  let checkpoint2 = 0
+  let checkpoint3 = 0
+  let checkpoint4 = 0
 
   await driver.transaction(async (tx) => {
-    // const checkpoint1 = performance.now()
-    // console.log(`Transaction took ${checkpoint1 - checkpoint0}ms`)
+    checkpoint1 = performance.now()
 
     const nodes = new Set(
       operations.flatMap((op) => [
         op.node_id,
         op.old_parent_id,
         op.new_parent_id,
-      ]),
+      ])
     )
 
     // Insert all new moves into op_log and ensure nodes exist
@@ -65,7 +69,7 @@ export const insertMoveOperations = async (
           '${op.new_parent_id}',
           '${op.client_id}',
           ${op.sync_timestamp ? `'${op.sync_timestamp}'` : "NULL"}
-        )`,
+        )`
       )
       .join(",\n")
 
@@ -97,8 +101,7 @@ export const insertMoveOperations = async (
       );
     `)
 
-    // const checkpoint2 = performance.now()
-    // console.log(`Move insertions took ${checkpoint2 - checkpoint1}ms`)
+    checkpoint2 = performance.now()
 
     // Get and apply moves in timestamp order
     const moves = await tx.execute<{
@@ -112,8 +115,7 @@ export const insertMoveOperations = async (
       ORDER BY timestamp ASC
     `)
 
-    // const checkpoint3 = performance.now()
-    // console.log(`Move selection took ${checkpoint3 - checkpoint2}ms`)
+    checkpoint3 = performance.now()
 
     // Apply valid moves in timestamp order
     const moveStatements = moves
@@ -144,22 +146,28 @@ export const insertMoveOperations = async (
           ELSE parent_id
         END
         WHERE id = '${node_id}';
-      `,
+      `
       )
       .join("\n")
 
     await tx.executeScript(sql`${moveStatements}`)
 
-    // const checkpoint4 = performance.now()
-    // console.log(
-    //   `Move application took ${checkpoint4 - checkpoint3}ms. At: ${checkpoint4}`,
-    // )
+    checkpoint4 = performance.now()
 
     await tx.commit()
   })
 
-  // const checkpoint5 = performance.now()
-  // console.log(`Total took ${checkpoint5 - checkpoint0}ms`)
+  const checkpoint5 = performance.now()
+
+  console.log(
+    `Inserting ${operations.length} moves | Total: ${Math.floor(
+      checkpoint5 - checkpoint0
+    )}ms | Rollback: ${Math.floor(
+      checkpoint2 - checkpoint0
+    )}ms | Select: ${Math.floor(
+      checkpoint3 - checkpoint2
+    )}ms | Apply: ${Math.floor(checkpoint4 - checkpoint3)}ms`
+  )
 }
 
 export const subtree = async (driver: Driver, id: string, depth = 1) => {
