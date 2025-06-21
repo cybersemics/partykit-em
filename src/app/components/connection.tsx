@@ -512,7 +512,10 @@ export const Connection = ({ children }: ConnectionProps) => {
             await pullMoves()
           } else {
             // Full sync
-            await performFullSync()
+            // await performFullSync()
+
+            // TODO: Switch back to copy-stream-based full sync, we're debugging plain CRDT performance.
+            await pullMoves()
           }
         }
       }
