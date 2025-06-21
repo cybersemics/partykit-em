@@ -227,7 +227,10 @@ export const Connection = ({ children }: ConnectionProps) => {
           )
         }
 
-        await worker.waitForResult(insertMoves(operations))
+        while (operations.length) {
+          await worker.waitForResult(insertMoves(operations.slice(0, 1000)))
+          operations.splice(0, 1000)
+        }
       }
 
       // Process any remaining data
